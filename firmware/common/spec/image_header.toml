@@ -1,0 +1,81 @@
+# CERBERUS-BOOT image header, machine-readable source of truth.
+# Every consumer (Ada, Rust, C, CLI) must match this file.
+
+[header]
+version      = 1
+size         = 256
+endian       = "little"
+magic_value  = 0x53454342
+magic_bytes  = [0x42, 0x43, 0x45, 0x53]
+
+[crc]
+field        = "HEADER_CRC32"
+algorithm    = "CRC-32/ISO-HDLC"
+poly         = 0x04C11DB7
+init         = 0xFFFFFFFF
+xorout       = 0xFFFFFFFF
+check_string = "123456789"
+check_value  = 0xCBF43926
+covers       = [0x000, 0x0FB]
+
+[signing]
+field        = "SIGNATURE"
+algorithm    = "Ed25519"
+covers       = [0x000, 0x047]
+
+[limits]
+slot_size    = 0xE0000
+max_payload  = 0xDFF00
+
+[[field]]
+name = "MAGIC"
+offset = 0x000
+size = 4
+[[field]]
+name = "HDR_VERSION"
+offset = 0x004
+size = 2
+[[field]]
+name = "IMAGE_TYPE"
+offset = 0x006
+size = 2
+[[field]]
+name = "SECURITY_VERSION"
+offset = 0x008
+size = 4
+[[field]]
+name = "PAYLOAD_SIZE"
+offset = 0x00C
+size = 4
+[[field]]
+name = "LOAD_ADDRESS"
+offset = 0x010
+size = 4
+[[field]]
+name = "ENTRY_POINT"
+offset = 0x014
+size = 4
+[[field]]
+name = "NONCE_SALT"
+offset = 0x018
+size = 16
+[[field]]
+name = "IMAGE_DIGEST"
+offset = 0x028
+size = 32
+[[field]]
+name = "SIGNATURE"
+offset = 0x048
+size = 64
+[[field]]
+name = "RESERVED"
+offset = 0x088
+size = 116
+[[field]]
+name = "HEADER_CRC32"
+offset = 0x0FC
+size = 4
+
+[image_type]
+BL2 = 0x0001
+APP = 0x0002

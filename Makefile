@@ -146,3 +146,9 @@ clean: ## remove build outputs
 
 distclean: clean ## also remove cargo/gnat artifacts
 	rm -rf $(BL2_DIR)/target $(CLI_DIR)/target $(BL1_DIR)/obj
+
+
+# ---- Spec validation --------------------------------------------------------
+.PHONY: spec-check
+spec-check: ## validate the shared image header spec
+	@python3 scripts/check_spec.py
