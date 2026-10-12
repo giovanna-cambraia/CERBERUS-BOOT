@@ -1,0 +1,17 @@
+# Build outputs
+build/
+target/
+*.o
+*.ali
+*.ghw
+*.cf
+obj/
+
+# Secrets: dev signing keys must never be committed
+keys/*
+!keys/.gitkeep
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
