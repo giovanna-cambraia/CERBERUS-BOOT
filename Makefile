@@ -159,3 +159,11 @@ spec-check: ## validate the shared image header spec
 test-cli: ## run cerberus-cli unit tests
 	@if [ -f $(CLI_DIR)/Cargo.toml ]; then $(CARGO) test --manifest-path $(CLI_DIR)/Cargo.toml; \
 	else echo "[skip] test-cli: $(CLI_DIR)/Cargo.toml not present yet"; fi
+
+
+# ---- Dev signing keys -------------------------------------------------------
+CLI_BIN := $(CLI_DIR)/target/release/cerberus-cli
+
+sign-keys: cli ## generate dev signing keys in keys/ (skips if present)
+	@if [ -f keys/dev.key ]; then echo "[skip] keys/dev.key already exists"; \
+	else $(CLI_BIN) keygen keys/dev; fi
