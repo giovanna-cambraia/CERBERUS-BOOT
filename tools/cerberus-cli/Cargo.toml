@@ -12,3 +12,6 @@ name = "cerberus-cli"
 path = "src/main.rs"
 
 [dependencies]
+ed25519-dalek = "2"
+sha2 = "0.10"
+getrandom = "0.2"
