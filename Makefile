@@ -152,3 +152,10 @@ distclean: clean ## also remove cargo/gnat artifacts
 .PHONY: spec-check
 spec-check: ## validate the shared image header spec
 	@python3 scripts/check_spec.py
+
+
+# ---- CLI tests --------------------------------------------------------------
+.PHONY: test-cli
+test-cli: ## run cerberus-cli unit tests
+	@if [ -f $(CLI_DIR)/Cargo.toml ]; then $(CARGO) test --manifest-path $(CLI_DIR)/Cargo.toml; \
+	else echo "[skip] test-cli: $(CLI_DIR)/Cargo.toml not present yet"; fi
