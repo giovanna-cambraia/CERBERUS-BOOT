@@ -167,3 +167,17 @@ CLI_BIN := $(CLI_DIR)/target/release/cerberus-cli
 sign-keys: cli ## generate dev signing keys in keys/ (skips if present)
 	@if [ -f keys/dev.key ]; then echo "[skip] keys/dev.key already exists"; \
 	else $(CLI_BIN) keygen keys/dev; fi
+
+
+# ---- Test vectors -----------------------------------------------------------
+VEC_DIR := test/vectors
+
+.PHONY: vectors vectors-check
+vectors: cli ## regenerate test/vectors (deterministic)
+	@rm -f $(VEC_DIR)/*.img $(VEC_DIR)/manifest.toml
+	@$(CLI_BIN) vectors $(VEC_DIR)
+
+vectors-check: cli ## fail if test/vectors differs from a fresh generation
+	@rm -rf $(BUILD)/vectors-check
+	@$(CLI_BIN) vectors $(BUILD)/vectors-check > /dev/null
+	@diff -r -x .gitkeep -x README.md $(BUILD)/vectors-check $(VEC_DIR) && echo "[ok] test/vectors is up to date"

@@ -1,6 +1,7 @@
 use cerberus_cli::header::{self, Header};
 use cerberus_cli::hexutil::{from_hex, to_hex};
 use cerberus_cli::image::{build_image, sha256, verify_image, ImageParams};
+use cerberus_cli::vectors;
 use ed25519_dalek::SigningKey;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -15,6 +16,7 @@ fn usage() -> ExitCode {
     eprintln!("  cerberus-cli dump <image>             print the header (structural checks only)");
     eprintln!("  cerberus-cli example <out.bin>        dummy unsigned header");
     ExitCode::from(2)
+    eprintln!("  cerberus-cli vectors <outdir>         write deterministic test vectors + manifest");
 }
 
 fn flag<'a>(args: &[&'a str], name: &str) -> Option<&'a str> {
@@ -223,6 +225,27 @@ fn main() -> ExitCode {
         ("verify", r) => cmd_verify(r),
         ("dump", [path]) => cmd_dump(path),
         ("example", [out]) => cmd_example(out),
+        ("vectors", [dir]) => cmd_vectors(dir),
         _ => usage(),
     }
+}
+
+fn cmd_vectors(dir: &str) -> ExitCode {
+    if let Err(e) = fs::create_dir_all(dir) {
+        return fail(format!("{dir}: {e}"));
+    }
+    let vs = vectors::generate();
+    for v in &vs {
+        let path = format!("{dir}/{}", v.file);
+        if let Err(e) = fs::write(&path, &v.bytes) {
+            return fail(format!("{path}: {e}"));
+        }
+    }
+    let mpath = format!("{dir}/manifest.toml");
+    if let Err(e) = fs::write(&mpath, vectors::manifest(&vs)) {
+        return fail(format!("{mpath}: {e}"));
+    }
+    println!("wrote {} vectors and manifest.toml to {dir}", vs.len());
+    println!("test public key {}", to_hex(&vectors::test_public_key()));
+    ExitCode::SUCCESS
 }
