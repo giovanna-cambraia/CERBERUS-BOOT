@@ -1,0 +1,20 @@
+[package]
+name = "cerberus-bl2"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "cerberus_bl2"
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+ed25519-dalek = "2"
+sha2 = "0.10"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+panic = "abort"
+codegen-units = 1
