@@ -1,0 +1,80 @@
+# CERBERUS-BOOT slot-state record, machine-readable source of truth.
+# Consumers: BL2 (Rust) and the OTA agent (C). Rules: nv_state.md
+
+[record]
+version      = 1
+size         = 32
+endian       = "little"
+magic_value  = 0x4E565354
+magic_bytes  = [0x54, 0x53, 0x56, 0x4E]   # as stored in flash
+
+[crc]
+field        = "CRC32"
+algorithm    = "CRC-32/ISO-HDLC"          # same as zlib.crc32 and the image header
+check_string = "123456789"
+check_value  = 0xCBF43926
+covers       = [0x00, 0x1B]               # inclusive
+
+[storage]
+base         = 0x401E0000                 # NV region (ASM-003)
+region_size  = 0x20000
+sector_size  = 4096                       # erase granularity of the emulated flash
+sectors      = 2                          # copies, used alternately
+record_offset = 0                         # record starts at the sector start
+erased_byte  = 0xFF
+
+[policy]
+default_trial_boots = 3
+
+[slot]
+A = 0
+B = 1
+
+[status]
+Empty     = 0
+Pending   = 1
+Testing   = 2
+Confirmed = 3
+Invalid   = 4
+Broken    = 5
+
+[[field]]
+name = "MAGIC"
+offset = 0x00
+size = 4
+[[field]]
+name = "VERSION"
+offset = 0x04
+size = 2
+[[field]]
+name = "RESERVED0"
+offset = 0x06
+size = 2
+[[field]]
+name = "SEQ"
+offset = 0x08
+size = 4
+[[field]]
+name = "ACTIVE"
+offset = 0x0C
+size = 1
+[[field]]
+name = "SLOT_A_STATUS"
+offset = 0x0D
+size = 1
+[[field]]
+name = "SLOT_B_STATUS"
+offset = 0x0E
+size = 1
+[[field]]
+name = "TRIALS_LEFT"
+offset = 0x0F
+size = 1
+[[field]]
+name = "RESERVED1"
+offset = 0x10
+size = 12
+[[field]]
+name = "CRC32"
+offset = 0x1C
+size = 4
