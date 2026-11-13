@@ -181,3 +181,9 @@ vectors-check: cli ## fail if test/vectors differs from a fresh generation
 	@rm -rf $(BUILD)/vectors-check
 	@$(CLI_BIN) vectors $(BUILD)/vectors-check > /dev/null
 	@diff -r -x .gitkeep -x README.md $(BUILD)/vectors-check $(VEC_DIR) && echo "[ok] test/vectors is up to date"
+
+# ---- Spec validation --------------------------------------------------------
+.PHONY: spec-check
+spec-check: ## validate the image header and NV state specs
+	@python3 scripts/check_spec.py
+	@python3 scripts/check_nv_spec.py
