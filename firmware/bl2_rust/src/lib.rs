@@ -6,6 +6,8 @@
 #![deny(clippy::all)]
 
 pub mod boot;
+#[cfg(feature = "crypto")]
+pub mod crypto;
 pub mod error;
 pub mod flash;
 pub mod flow;
