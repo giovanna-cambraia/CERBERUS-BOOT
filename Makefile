@@ -145,7 +145,7 @@ clean: ## remove build outputs
 	@touch $(BUILD)/.gitkeep 2>/dev/null || true
 
 distclean: clean ## also remove cargo/gnat artifacts
-	rm -rf $(BL2_DIR)/target $(CLI_DIR)/target $(BL1_DIR)/obj
+	rm -rf $(BL2_DIR)/target $(BL2_DIR)/entry/target $(CLI_DIR)/target $(BL1_DIR)/obj
 
 
 # ---- Spec validation --------------------------------------------------------
@@ -187,3 +187,20 @@ vectors-check: cli ## fail if test/vectors differs from a fresh generation
 spec-check: ## validate the image header and NV state specs
 	@python3 scripts/check_spec.py
 	@python3 scripts/check_nv_spec.py
+
+# ---- BL2 bare-metal image ---------------------------------------------------
+BL2_ENTRY    := $(BL2_DIR)/entry
+BL2_ELF      := $(BL2_ENTRY)/target/$(RV_TARGET)/release/bl2
+RUST_SYSROOT := $(shell rustc --print sysroot 2>/dev/null)
+LLVM_BIN     := $(RUST_SYSROOT)/lib/rustlib/x86_64-unknown-linux-gnu/bin
+
+.PHONY: bl2-entry bl2-image
+bl2-entry: ## build the BL2 bare-metal ELF (RV32IMAC)
+	@$(CARGO) build --release --target $(RV_TARGET) --manifest-path $(BL2_ENTRY)/Cargo.toml
+	@$(LLVM_BIN)/llvm-size $(BL2_ELF) 2>/dev/null || echo "(run 'rustup component add llvm-tools' for size output)"
+
+bl2-image: bl2-entry cli ## sign the BL2 ELF into build/bl2.img (needs keys/dev.key)
+	@test -f keys/dev.key || { echo "run 'make sign-keys' first"; exit 1; }
+	@mkdir -p $(BUILD)
+	@$(LLVM_BIN)/llvm-objcopy -O binary $(BL2_ELF) $(BUILD)/bl2.bin
+	@$(CLI_BIN) sign --key keys/dev.key --payload $(BUILD)/bl2.bin --out $(BUILD)/bl2.img --type bl2 --secver 1

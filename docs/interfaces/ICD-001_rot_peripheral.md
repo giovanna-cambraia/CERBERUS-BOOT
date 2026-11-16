@@ -50,6 +50,14 @@ The key hash is fixed at elaboration (VHDL generic `PUBKEY_HASH`) and is
 readable before and after the commit. LOCKED indicates whether the device is
 committed. Per-word fuse programming before the commit is not modeled yet.
 
+### 3.6 Key hash word order
+
+ROT_PUBKEY_HASH_i (offset 0x004 + 4i) holds digest bytes 4i..4i+3 of the
+SHA-256 digest as a little-endian 32-bit value: digest byte 4i is the least
+significant byte of the word. Software rebuilds the digest by storing each
+word little-endian, in register order. Provisioning (the VHDL generic
+`PUBKEY_HASH`) must use the same mapping.
+
 ## 4. Bus protocol
 
 Synchronous, single-cycle, no wait states.
