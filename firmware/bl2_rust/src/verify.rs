@@ -32,7 +32,7 @@ pub struct Policy<'a> {
     pub otp_key_hash: &'a [u8; 32],
 }
 
-fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }

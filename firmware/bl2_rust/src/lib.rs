@@ -8,7 +8,9 @@
 pub mod boot;
 pub mod error;
 pub mod flash;
+pub mod flow;
 pub mod header;
 pub mod memmap;
 pub mod nv;
+pub mod platform;
 pub mod verify;
