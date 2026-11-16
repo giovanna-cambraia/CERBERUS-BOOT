@@ -1,0 +1,36 @@
+// CERBERUS-BOOT platform: RV32IMAC hart and the ASM-003 memory map.
+
+cpu: CPU.RiscV32 @ sysbus
+    cpuType: "rv32imac"
+    timeProvider: clint
+
+clint: IRQControllers.CoreLevelInterruptor @ sysbus 0x02000000
+    frequency: 10000000
+    numberOfTargets: 1
+    [0, 1] -> cpu@[3, 7]
+
+// Boot ROM (BL1 goes here later).
+bootrom: Memory.MappedMemory @ sysbus 0x00010000
+    size: 0x8000
+
+// Hardware root of trust, ICD-001. Scripted for now; the GHDL bridge replaces it.
+rot: Python.PythonPeripheral @ sysbus 0x00020000
+    size: 0x1000
+    initable: true
+    filename: "@ROT_SCRIPT@"
+
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x40000
+
+// Flash, modelled as plain memory (no flash controller yet).
+flash_bl2: Memory.MappedMemory @ sysbus 0x40000000
+    size: 0x20000
+
+flash_slot_a: Memory.MappedMemory @ sysbus 0x40020000
+    size: 0xE0000
+
+flash_slot_b: Memory.MappedMemory @ sysbus 0x40100000
+    size: 0xE0000
+
+flash_nv: Memory.MappedMemory @ sysbus 0x401E0000
+    size: 0x20000
