@@ -11,12 +11,12 @@ use core::panic::PanicInfo;
 use core::ptr::{addr_of_mut, read_volatile, write_volatile};
 
 use cerberus_bl2::boot::Config;
+use cerberus_bl2::crypto::DalekCrypto;
 use cerberus_bl2::flash::{FlashError, FlashMemory};
 use cerberus_bl2::flow::{boot_flow, Outcome};
 use cerberus_bl2::memmap::{NV_STATE, SLOT_A, SLOT_B};
 use cerberus_bl2::nv::{NvStore, Slot};
 use cerberus_bl2::platform::{hash_from_words, RootOfTrust, SlotStorage};
-use cerberus_bl2::verify::CryptoEngine;
 
 // ---- startup -----------------------------------------------------------------
 
@@ -164,22 +164,6 @@ impl FlashMemory for MmioFlash {
     }
 }
 
-// ---- crypto (STUB) -------------------------------------------------------------
-
-/// FAIL-CLOSED STUB: never accepts a signature, so BL2 cannot boot anything
-/// the next step replaces it with a real SHA-256 / Ed25519 engine; never ship
-struct FailClosedCrypto;
-
-impl CryptoEngine for FailClosedCrypto {
-    fn sha256(&self, _data: &[u8]) -> [u8; 32] {
-        [0u8; 32]
-    }
-
-    fn ed25519_verify(&self, _pk: &[u8; 32], _msg: &[u8], _sig: &[u8; 64]) -> bool {
-        false
-    }
-}
-
 // ---- boot report ---------------------------------------------------------------
 
 /// written to a fixed symbol so a debugger or Renode can read the result:
@@ -234,7 +218,7 @@ pub extern "C" fn bl2_main() -> ! {
         &mut rot,
         &slots,
         &mut nv,
-        &FailClosedCrypto,
+        &DalekCrypto,
         &vendor_key::VENDOR_PUBKEY,
         &Config::default(),
     );
