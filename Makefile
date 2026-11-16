@@ -210,3 +210,15 @@ bl2-image: bl2-entry cli ## sign the BL2 ELF into build/bl2.img (needs keys/dev.
 .PHONY: otp-words
 otp-words: ## print the OTP hash words for keys/dev.pub (for the VHDL generic)
 	@python3 scripts/otp_words.py keys/dev.pub
+
+
+# ---- Renode end-to-end run --------------------------------------------------
+SCENARIO   ?= normal
+RENODE_DIR := $(BUILD)/renode
+
+.PHONY: renode-run
+renode-run: bl2-image ## boot BL2 in Renode (SCENARIO=normal|update)
+	@mkdir -p $(RENODE_DIR)
+	@python3 scripts/renode_prepare.py --scenario $(SCENARIO) --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF)
+	@$(RENODE) --disable-xwt --console --plain $(RENODE_DIR)/run.resc 2>&1 | tee $(RENODE_DIR)/run.log
+	@python3 scripts/renode_check.py $(RENODE_DIR)/run.log $(RENODE_DIR)/expected.json
