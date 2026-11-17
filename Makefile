@@ -222,3 +222,20 @@ renode-run: bl2-image ## boot BL2 in Renode (SCENARIO=normal|update)
 	@python3 scripts/renode_prepare.py --scenario $(SCENARIO) --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF)
 	@$(RENODE) --disable-xwt --console --plain $(RENODE_DIR)/run.resc 2>&1 | tee $(RENODE_DIR)/run.log
 	@python3 scripts/renode_check.py $(RENODE_DIR)/run.log $(RENODE_DIR)/expected.json
+
+
+SCENARIOS := normal update tampered rollback wrong-otp unprovisioned bad-update fallback
+
+.PHONY: renode-all
+renode-all: bl2-image ## run every Renode scenario and summarize
+	@mkdir -p $(RENODE_DIR); fail=0; \
+	for s in $(SCENARIOS); do \
+	  echo "=== scenario: $$s"; \
+	  if python3 scripts/renode_prepare.py --scenario $$s --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF) > /dev/null \
+	     && $(RENODE) --disable-xwt --console --plain $(RENODE_DIR)/run.resc > $(RENODE_DIR)/run-$$s.log 2>&1; then \
+	    python3 scripts/renode_check.py $(RENODE_DIR)/run-$$s.log $(RENODE_DIR)/expected.json || fail=1; \
+	  else \
+	    echo "[FAIL] could not run scenario $$s"; fail=1; \
+	  fi; \
+	done; \
+	if [ $$fail -eq 0 ]; then echo "[ok] all scenarios passed"; else echo "[FAIL] some scenarios failed"; exit 1; fi

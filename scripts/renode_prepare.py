@@ -2,20 +2,18 @@
 """Prepare a Renode run of BL2. There is no BL1 yet, so Renode loads the BL2
 binary and starts the hart at its entry point.
 
-  python3 scripts/renode_prepare.py --scenario normal|update \
+  python3 scripts/renode_prepare.py --scenario NAME \
       --cli <cerberus-cli> --llvm-bin <dir> --elf <bl2 elf>
 
 Writes into build/renode/:
-  rot_peripheral.py   ICD-001 model, with the OTP hash of keys/dev.pub
+  rot_peripheral.py     ICD-001 model, with the OTP hash of keys/dev.pub
   app_a.img, app_b.img  signed test apps for the two slots
-  nv_update.bin       NV record for the "update" scenario
-  cerberus.repl       platform description
-  run.resc            Renode script
-  expected.json       what renode_check.py compares the output with
+  nv_pending_b.bin      NV record with slot B pending
+  cerberus.repl         platform description
+  run.resc              Renode script
+  expected.json         what renode_check.py compares the output with
 
-Scenarios:
-  normal  slot A holds a valid app, factory NV state     -> normal boot of A
-  update  slot B is pending (NV pre-seeded), A is valid   -> trial boot of B
+Scenarios: see SCENARIOS below.
 """
 import argparse
 import hashlib
@@ -24,6 +22,7 @@ import struct
 import subprocess
 import sys
 import tomllib
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -37,6 +36,10 @@ NV_SECTOR = 0x1000
 MARKER = 0x2003_0000
 BL2_ENTRY = 0x4000_0100
 REPORT_MAGIC = 0xB001_0001
+APP_MARKER = 0xA11CE000
+A_ENTRY = SLOT_A + 0x100
+B_ENTRY = SLOT_B + 0x100
+NONE = 0xFF  # BOOT_REPORT.slot when nothing boots
 
 # Test app: stores 0xA11CE000 at 0x20030000, then idles.
 APP_WORDS = [
@@ -52,9 +55,9 @@ ROT_TEMPLATE = """\
 # The fuses and the counter live in globals for the whole run.
 if request.isInit:
     hash_words = [@WORDS@]
-    locked = 1
+    locked = @LOCKED@
     err = 0
-    counter = 0
+    counter = @COUNTER@
 elif request.isRead:
     off = request.offset
     value = 0
@@ -81,6 +84,19 @@ elif request.isWrite:
     else:
         err = 1
 """
+
+# app_a / app_b: None (slot left blank), "good", "tampered" (payload byte
+# flipped) or "badsig" (signature corrupted, header CRC recomputed).
+SCENARIOS = {
+    "normal":        dict(app_a="good",     app_b=None,   nv=None,        counter0=0, locked=1, flip_hash=False),
+    "update":        dict(app_a="good",     app_b="good", nv="pending_b", counter0=0, locked=1, flip_hash=False),
+    "tampered":      dict(app_a="tampered", app_b=None,   nv=None,        counter0=0, locked=1, flip_hash=False),
+    "rollback":      dict(app_a="good",     app_b=None,   nv=None,        counter0=2, locked=1, flip_hash=False),
+    "wrong-otp":     dict(app_a="good",     app_b=None,   nv=None,        counter0=0, locked=1, flip_hash=True),
+    "unprovisioned": dict(app_a="good",     app_b=None,   nv=None,        counter0=0, locked=0, flip_hash=False),
+    "bad-update":    dict(app_a="good",     app_b="badsig", nv="pending_b", counter0=0, locked=1, flip_hash=False),
+    "fallback":      dict(app_a="good",     app_b="good", nv="pending_b", counter0=0, locked=1, flip_hash=False),
+}
 
 
 def read_key():
@@ -111,6 +127,29 @@ def sign(cli, payload, out, secver, load):
     )
 
 
+def tamper_payload(path):
+    img = bytearray(path.read_bytes())
+    img[0x100] ^= 0x01  # first payload byte
+    path.write_bytes(img)
+
+
+def break_signature(path):
+    """Flip a signature bit, then recompute the header CRC so that only the
+    signature check can catch it."""
+    img = bytearray(path.read_bytes())
+    img[0x48] ^= 0x01
+    struct.pack_into("<I", img, 0xFC, zlib.crc32(bytes(img[:0xFC])) & 0xFFFFFFFF)
+    path.write_bytes(img)
+
+
+def make_app(kind, cli, payload, path, secver, load):
+    sign(cli, payload, path, secver, load)
+    if kind == "tampered":
+        tamper_payload(path)
+    elif kind == "badsig":
+        break_signature(path)
+
+
 def symbol_address(llvm_bin, elf, name):
     out = subprocess.check_output([f"{llvm_bin}/llvm-nm", elf], text=True)
     for line in out.splitlines():
@@ -120,35 +159,98 @@ def symbol_address(llvm_bin, elf, name):
     sys.exit(f"symbol {name} not found in {elf}")
 
 
+def expectations(name, report):
+    """List of phases, one per boot; each phase is a list of
+    (label, address, expected value) read after that boot."""
+
+    def rep(code, slot, entry):
+        return [
+            ("BOOT_REPORT.magic", report + 0, REPORT_MAGIC),
+            ("BOOT_REPORT.code", report + 4, code),
+            ("BOOT_REPORT.slot", report + 8, slot),
+            ("BOOT_REPORT.entry", report + 12, entry),
+        ]
+
+    def nv(sector, seq, state):
+        base = NV_BASE + sector * NV_SECTOR
+        return [
+            (f"NV sector {sector}: seq", base + 0x8, seq),
+            (f"NV sector {sector}: state", base + 0xC, state),
+        ]
+
+    # NV state word = active | slot_a << 8 | slot_b << 16 | trials_left << 24
+    # Slot status codes: Empty 0, Pending 1, Testing 2, Confirmed 3, Invalid 4, Broken 5.
+    def marker(v):
+        return ("app marker", MARKER, v)
+
+    def counter(v):
+        return ("RoT counter", ROT_BASE + 0x24, v)
+
+    if name == "normal":
+        return [rep(0x00, 0, A_ENTRY) + [marker(APP_MARKER), counter(1)] + nv(0, 0, 0)]
+    if name == "update":
+        return [rep(0x01, 1, B_ENTRY) + [marker(APP_MARKER), counter(0)] + nv(1, 2, 0x02020300)]
+    if name in ("tampered", "rollback"):
+        c = 2 if name == "rollback" else 0
+        return [rep(0x12, NONE, 0) + [marker(0), counter(c)] + nv(0, 1, 0x00000400)]
+    if name == "wrong-otp":
+        return [rep(0x11, NONE, 0) + [marker(0), counter(0)] + nv(0, 0, 0)]
+    if name == "unprovisioned":
+        return [rep(0x10, NONE, 0) + [marker(0), counter(0)] + nv(0, 0, 0)]
+    if name == "bad-update":
+        return [rep(0x00, 0, A_ENTRY) + [marker(APP_MARKER), counter(1)] + nv(1, 2, 0x00040300)]
+    if name == "fallback":
+        phases = [
+            rep(0x01, 1, B_ENTRY) + nv(1, 2, 0x02020300),                    # trials 2 left
+            rep(0x01, 1, B_ENTRY) + nv(0, 3, 0x01020300),                    # 1 left
+            rep(0x01, 1, B_ENTRY) + nv(1, 4, 0x00020300) + [counter(0)],     # 0 left
+            rep(0x00, 0, A_ENTRY) + nv(0, 5, 0x00050300) + [counter(1)],     # B broken, A boots
+        ]
+        return [
+            [(f"boot {i + 1}: {label}", a, e) for label, a, e in phase]
+            for i, phase in enumerate(phases)
+        ]
+    sys.exit(f"no expectations for scenario {name}")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scenario", choices=["normal", "update"], default="normal")
+    ap.add_argument("--scenario", choices=list(SCENARIOS), default="normal")
     ap.add_argument("--cli", required=True)
     ap.add_argument("--llvm-bin", required=True)
     ap.add_argument("--elf", required=True)
     args = ap.parse_args()
-    update = args.scenario == "update"
+    sc = SCENARIOS[args.scenario]
 
     OUT.mkdir(parents=True, exist_ok=True)
     bl2_bin = ROOT / "build" / "bl2.bin"
     if not bl2_bin.exists():
         sys.exit(f"{bl2_bin} not found (run `make bl2-image`)")
 
-    # RoT model with the OTP hash of the dev key.
+    # RoT model with the OTP hash of the dev key (optionally wrong).
     digest = hashlib.sha256(read_key()).digest()
-    words = ", ".join(f"0x{w:08X}" for w in struct.unpack("<8I", digest))
+    words = list(struct.unpack("<8I", digest))
+    if sc["flip_hash"]:
+        words[0] ^= 0x1
     rot_py = OUT / "rot_peripheral.py"
-    rot_py.write_text(ROT_TEMPLATE.replace("@WORDS@", words))
+    rot_py.write_text(
+        ROT_TEMPLATE
+        .replace("@WORDS@", ", ".join(f"0x{w:08X}" for w in words))
+        .replace("@LOCKED@", str(sc["locked"]))
+        .replace("@COUNTER@", str(sc["counter0"]))
+    )
 
     # Signed test apps, linked for the slot they run from (XIP).
     payload = OUT / "app_payload.bin"
     payload.write_bytes(struct.pack("<5I", *APP_WORDS))
     app_a, app_b = OUT / "app_a.img", OUT / "app_b.img"
-    sign(args.cli, payload, app_a, 1, SLOT_A + 0x100)
-    sign(args.cli, payload, app_b, 2, SLOT_B + 0x100)
+    if sc["app_a"]:
+        make_app(sc["app_a"], args.cli, payload, app_a, 1, A_ENTRY)
+    if sc["app_b"]:
+        make_app(sc["app_b"], args.cli, payload, app_b, 2, B_ENTRY)
 
     # NV record with slot B pending (same encoder as the spec checker).
-    nv_bin = OUT / "nv_update.bin"
+    nv_bin = OUT / "nv_pending_b.bin"
     sys.path.insert(0, str(ROOT / "scripts"))
     import check_nv_spec
     with open(ROOT / "firmware/common/spec/nv_state.toml", "rb") as f:
@@ -161,26 +263,8 @@ def main():
     repl = OUT / "cerberus.repl"
     repl.write_text(template.replace("@ROT_SCRIPT@", str(rot_py)))
 
-    # What each scenario should produce.
     report = symbol_address(args.llvm_bin, args.elf, "BOOT_REPORT")
-    if update:
-        code, slot, entry, counter = 1, 1, SLOT_B + 0x100, 0
-    else:
-        code, slot, entry, counter = 0, 0, SLOT_A + 0x100, 1
-    reads = [
-        ("BOOT_REPORT.magic", report + 0, REPORT_MAGIC),
-        ("BOOT_REPORT.code", report + 4, code),
-        ("BOOT_REPORT.slot", report + 8, slot),
-        ("BOOT_REPORT.entry", report + 12, entry),
-        ("app marker", MARKER, 0xA11CE000),
-        ("RoT counter", ROT_BASE + 0x24, counter),
-    ]
-    if update:
-        new_rec = NV_BASE + NV_SECTOR
-        reads += [
-            ("NV new record: seq", new_rec + 0x8, 2),
-            ("NV new record: state", new_rec + 0xC, 0x02020300),
-        ]
+    phases = expectations(args.scenario, report)
 
     lines = [
         "using sysbus",
@@ -188,23 +272,27 @@ def main():
         f"machine LoadPlatformDescription @{repl}",
         "cpu PerformanceInMips 100",
         f"sysbus LoadBinary @{bl2_bin} 0x{BL2_ENTRY:X}",
-        f"sysbus LoadBinary @{app_a} 0x{SLOT_A:X}",
     ]
-    if update:
-        lines += [
-            f"sysbus LoadBinary @{app_b} 0x{SLOT_B:X}",
-            f"sysbus LoadBinary @{nv_bin} 0x{NV_BASE:X}",
-        ]
-    lines += [f"cpu PC 0x{BL2_ENTRY:X}", 'emulation RunFor "10"']
-    lines += [f"sysbus ReadDoubleWord 0x{addr:08X}" for _, addr, _ in reads]
+    if sc["app_a"]:
+        lines.append(f"sysbus LoadBinary @{app_a} 0x{SLOT_A:X}")
+    if sc["app_b"]:
+        lines.append(f"sysbus LoadBinary @{app_b} 0x{SLOT_B:X}")
+    if sc["nv"] == "pending_b":
+        lines.append(f"sysbus LoadBinary @{nv_bin} 0x{NV_BASE:X}")
+    for i, phase in enumerate(phases):
+        if i > 0:
+            lines.append("cpu Reset")  # next boot; flash and RoT state are kept
+        lines += [f"cpu PC 0x{BL2_ENTRY:X}", 'emulation RunFor "10"']
+        lines += [f"sysbus ReadDoubleWord 0x{addr:08X}" for _, addr, _ in phase]
     lines.append("quit")
     (OUT / "run.resc").write_text("\n".join(lines) + "\n")
 
+    flat = [item for phase in phases for item in phase]
     (OUT / "expected.json").write_text(json.dumps(
-        [{"label": n, "address": a, "expected": e} for n, a, e in reads], indent=2))
+        [{"label": n, "address": a, "expected": e} for n, a, e in flat], indent=2))
 
-    print(f"[prepare] scenario '{args.scenario}', BOOT_REPORT at 0x{report:08X}")
-    print(f"[prepare] OTP hash {digest.hex()}")
+    print(f"[prepare] scenario '{args.scenario}': {len(phases)} boot(s), "
+          f"{len(flat)} checks, BOOT_REPORT at 0x{report:08X}")
 
 
 if __name__ == "__main__":
