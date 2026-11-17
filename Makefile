@@ -239,3 +239,20 @@ renode-all: bl2-image ## run every Renode scenario and summarize
 	  fi; \
 	done; \
 	if [ $$fail -eq 0 ]; then echo "[ok] all scenarios passed"; else echo "[FAIL] some scenarios failed"; exit 1; fi
+
+
+# ---- GHDL-backed RoT (bridge) ---------------------------------------------
+.PHONY: bridge-test cosim-run cosim-all
+bridge-test: ## test the GHDL bridge and the VHDL RoT without Renode
+	@python3 sim/bridge/test_bridge.py
+
+cosim-run: bl2-image bridge ## boot BL2 in Renode with the VHDL RoT (SCENARIO=...)
+	@python3 scripts/renode_run.py --rot ghdl --scenario $(SCENARIO) --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF) --renode $(RENODE) --bridge $(BUILD)/ghdl_renode_socket_bridge --port $(BRIDGE_PORT)
+
+cosim-all: bl2-image bridge ## run every scenario against the VHDL RoT
+	@fail=0; \
+	for s in $(SCENARIOS); do \
+	  echo "=== scenario: $$s (VHDL RoT)"; \
+	  python3 scripts/renode_run.py --rot ghdl --scenario $$s --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF) --renode $(RENODE) --bridge $(BUILD)/ghdl_renode_socket_bridge --port $(BRIDGE_PORT) || fail=1; \
+	done; \
+	if [ $$fail -eq 0 ]; then echo "[ok] all scenarios passed against the VHDL RoT"; else echo "[FAIL] some scenarios failed"; exit 1; fi
