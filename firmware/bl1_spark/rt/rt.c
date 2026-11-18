@@ -1,0 +1,53 @@
+/* Minimal freestanding runtime for BL1. Built with -fno-builtin and
+   -fno-tree-loop-distribute-patterns so these loops are not turned back
+   into calls to themselves. */
+#include <stddef.h>
+
+void *memset(void *dst, int c, size_t n)
+{
+    unsigned char *p = (unsigned char *)dst;
+    while (n--) { *p++ = (unsigned char)c; }
+    return dst;
+}
+
+void *memcpy(void *dst, const void *src, size_t n)
+{
+    unsigned char *d = (unsigned char *)dst;
+    const unsigned char *s = (const unsigned char *)src;
+    while (n--) { *d++ = *s++; }
+    return dst;
+}
+
+void *memmove(void *dst, const void *src, size_t n)
+{
+    unsigned char *d = (unsigned char *)dst;
+    const unsigned char *s = (const unsigned char *)src;
+    if (d < s) {
+        while (n--) { *d++ = *s++; }
+    } else {
+        d += n;
+        s += n;
+        while (n--) { *--d = *--s; }
+    }
+    return dst;
+}
+
+int memcmp(const void *a, const void *b, size_t n)
+{
+    const unsigned char *x = (const unsigned char *)a;
+    const unsigned char *y = (const unsigned char *)b;
+    while (n--) {
+        if (*x != *y) { return (int)*x - (int)*y; }
+        x++;
+        y++;
+    }
+    return 0;
+}
+
+// Called by GNAT-generated code for a "raise". None are expected: the SPARKunits are proved free of run-time errors. Fail stop. 
+void __gnat_last_chance_handler(const char *source, int line)
+{
+    (void)source;
+    (void)line;
+    for (;;) { __asm__ volatile ("wfi"); }
+}

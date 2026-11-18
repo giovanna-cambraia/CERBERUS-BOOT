@@ -1,0 +1,4 @@
+--  Configuration pragmas for the BL1 target build.
+pragma Restrictions (No_Elaboration_Code);
+pragma Restrictions (No_Exception_Propagation);
+pragma Restrictions (No_Secondary_Stack);
