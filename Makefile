@@ -270,3 +270,7 @@ bl1-rv32: ## build BL1 (Ada/SPARK) for RV32IMAC with the riscv64-elf GNAT
 
 renode-bl1: bl1 bl1-rv32 ## run BL1 in Renode against the shared vectors
 	@python3 scripts/renode_bl1.py --renode $(RENODE)
+	
+.PHONY: test-sha256
+test-sha256: bl1 ## SHA-256 in SPARK against hashlib and FIPS 180-4
+	@python3 $(BL1_DIR)/tests/run_sha256.py $(BUILD)/sha256_check

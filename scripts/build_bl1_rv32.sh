@@ -22,7 +22,7 @@ C_FLAGS=("${ARCH[@]}" -c -O1 -ffreestanding -fno-builtin -Wall -Wextra -Werror "
 
 echo "[bl1-rv32] compiling Ada"
 for f in bl1.ads bl1-types.ads bl1-crc.adb bl1-header.adb bl1-policy.adb \
-         bl1-platform.adb bl1-boot.adb bl1_main.adb; do
+         bl1-sha256.adb bl1-platform.adb bl1-boot.adb bl1_main.adb; do
   (cd "$OUT/obj" && "$CC" "${ADA_FLAGS[@]}" "$FW/src/$f")
 done
 
@@ -37,6 +37,8 @@ echo "[bl1-rv32] linking"
 "$OBJCOPY" -O binary "$OUT/bl1.elf" "$OUT/bl1.bin"
 
 "$SIZE" "$OUT/bl1.elf"
+echo "SHA-256 object (not linked into the ROM until BL1 calls it):"
+"$SIZE" "$OUT/obj/bl1-sha256.o"
 bytes="$(stat -c %s "$OUT/bl1.bin")"
 echo "bl1.bin: $bytes bytes (boot ROM is 32768)"
 if [ "$bytes" -gt 32768 ]; then
