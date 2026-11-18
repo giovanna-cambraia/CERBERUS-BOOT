@@ -15,4 +15,7 @@ package BL1.Types with SPARK_Mode is
    --  fixed-size array keeps every index provable.
    type Header_Buffer is array (Header_Index) of Byte;
 
+   --  Index type is Integer (not Natural) so that empty arrays (0 .. -1) exist.
+   type Byte_Array is array (Integer range <>) of Byte;
+
 end BL1.Types;

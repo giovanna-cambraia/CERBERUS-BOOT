@@ -258,6 +258,11 @@ cosim-all: bl2-image bridge ## run every scenario against the VHDL RoT
 	if [ $$fail -eq 0 ]; then echo "[ok] all scenarios passed against the VHDL RoT"; else echo "[FAIL] some scenarios failed"; exit 1; fi
 
 
+# ---- BL1 tests --------------------------------------------------------------
+.PHONY: test-bl1
+test-bl1: bl1 ## BL1 header parser against the shared test vectors
+	@python3 $(BL1_DIR)/tests/run_vectors.py $(BUILD)/bl1_check
+	
 # ---- BL1 on the RV32 target -------------------------------------------------
 .PHONY: bl1-rv32 renode-bl1
 bl1-rv32: ## build BL1 (Ada/SPARK) for RV32IMAC with the riscv64-elf GNAT
