@@ -256,3 +256,12 @@ cosim-all: bl2-image bridge ## run every scenario against the VHDL RoT
 	  python3 scripts/renode_run.py --rot ghdl --scenario $$s --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF) --renode $(RENODE) --bridge $(BUILD)/ghdl_renode_socket_bridge --port $(BRIDGE_PORT) || fail=1; \
 	done; \
 	if [ $$fail -eq 0 ]; then echo "[ok] all scenarios passed against the VHDL RoT"; else echo "[FAIL] some scenarios failed"; exit 1; fi
+
+
+# ---- BL1 on the RV32 target -------------------------------------------------
+.PHONY: bl1-rv32 renode-bl1
+bl1-rv32: ## build BL1 (Ada/SPARK) for RV32IMAC with the riscv64-elf GNAT
+	@bash scripts/build_bl1_rv32.sh
+
+renode-bl1: bl1 bl1-rv32 ## run BL1 in Renode against the shared vectors
+	@python3 scripts/renode_bl1.py --renode $(RENODE)
