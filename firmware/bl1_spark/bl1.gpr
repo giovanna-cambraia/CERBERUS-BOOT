@@ -1,0 +1,14 @@
+project BL1 is
+
+   for Languages use ("Ada");
+   for Source_Dirs use ("src", "tests");
+   for Object_Dir use "obj";
+   for Exec_Dir use "../../build";
+   for Main use ("bl1_check.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-g", "-O1");
+   end Compiler;
+
+end BL1;
