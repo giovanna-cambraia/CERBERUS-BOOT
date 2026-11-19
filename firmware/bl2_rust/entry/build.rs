@@ -42,7 +42,10 @@ fn main() {
     };
 
     let body: Vec<String> = key.iter().map(|b| format!("0x{b:02X}")).collect();
-    let src = format!("pub static VENDOR_PUBKEY: [u8; 32] = [{}];\n", body.join(", "));
+    let src = format!(
+        "#[link_section = \".vendor_key\"]\n#[used]\npub static VENDOR_PUBKEY: [u8; 32] = [{}];\n",
+        body.join(", ")
+    );
     let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("vendor_key.rs");
     fs::write(out, src).unwrap();
 }

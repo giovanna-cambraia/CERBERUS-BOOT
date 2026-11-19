@@ -204,8 +204,10 @@ bl2-image: bl2-entry cli ## sign the BL2 ELF into build/bl2.img (needs keys/dev.
 	@mkdir -p $(BUILD)
 	@$(LLVM_BIN)/llvm-objcopy -O binary $(BL2_ELF) $(BUILD)/bl2.bin
 	@echo "bl2.bin: $$(stat -c %s $(BUILD)/bl2.bin) bytes (partition limit 130816)"
-	@python3 scripts/otp_words.py keys/dev.pub --bin $(BUILD)/bl2.bin
-	@$(CLI_BIN) sign --key keys/dev.key --payload $(BUILD)/bl2.bin --out $(BUILD)/bl2.img --type bl2 --secver 1
+	@python3 scripts/otp_words.py keys/dev.pub --bin $(BUILD)/bl2.bin --expect-offset 0
+	@entry=$$($(LLVM_BIN)/llvm-nm $(BL2_ELF) | awk '$$3 == "_start" { print "0x" $$1 }'); \
+	  echo "BL2 entry point: $$entry"; \
+	  $(CLI_BIN) sign --key keys/dev.key --payload $(BUILD)/bl2.bin --out $(BUILD)/bl2.img --type bl2 --secver
 
 .PHONY: otp-words
 otp-words: ## print the OTP hash words for keys/dev.pub (for the VHDL generic)
@@ -270,7 +272,7 @@ bl1-rv32: ## build BL1 (Ada/SPARK) for RV32IMAC with the riscv64-elf GNAT
 
 renode-bl1: bl1 bl1-rv32 ## run BL1 in Renode against the shared vectors
 	@python3 scripts/renode_bl1.py --renode $(RENODE)
-	
+
 .PHONY: test-sha256
 test-sha256: bl1 ## SHA-256 in SPARK against hashlib and FIPS 180-4
 	@python3 $(BL1_DIR)/tests/run_sha256.py $(BUILD)/sha256_check

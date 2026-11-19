@@ -10,6 +10,13 @@ MEMORY
 
 SECTIONS
 {
+    /* The vendor public key comes first in the payload so BL1 can find it
+       (ADR-004). The entry point, _start, follows it. */
+    .vendor_key : ALIGN(4)
+    {
+        KEEP(*(.vendor_key))
+    } > FLASH
+
     .text : ALIGN(4)
     {
         KEEP(*(.text.init))
