@@ -274,3 +274,7 @@ renode-bl1: bl1 bl1-rv32 ## run BL1 in Renode against the shared vectors
 .PHONY: test-sha256
 test-sha256: bl1 ## SHA-256 in SPARK against hashlib and FIPS 180-4
 	@python3 $(BL1_DIR)/tests/run_sha256.py $(BUILD)/sha256_check
+
+.PHONY: test-ed25519
+test-ed25519: bl1 ## Ed25519 in BL1 (Monocypher) against RFC 8032 and the vectors
+	@python3 $(BL1_DIR)/tests/run_ed25519.py $(BUILD)/ed25519_check
