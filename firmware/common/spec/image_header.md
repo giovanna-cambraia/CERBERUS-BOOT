@@ -32,3 +32,10 @@ The machine-readable source of truth is `image_header.toml`.
 10. Ed25519 signature over `[0x000..0x047]` verifies against the RoT key
 
 Any failure means the image is rejected.
+
+## BL2 payload layout
+
+A BL2 image (IMAGE_TYPE 0x0001) starts its payload with the 32-byte vendor
+public key, and its entry point is the first byte after the key (payload
+start + 0x20). BL1 hashes those 32 bytes and compares the SHA-256 with the OTP
+hash before using the key to verify the image signature (ADR-004).

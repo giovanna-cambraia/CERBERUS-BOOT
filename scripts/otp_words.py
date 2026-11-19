@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """OTP hash words for a vendor public key.
 
-  python3 scripts/otp_words.py [keys/dev.pub] [--bin build/bl2.bin]
+  python3 scripts/otp_words.py [keys/dev.pub] [--bin build/bl2.bin [--expect-offset N]]
 
 Prints the SHA-256 of the key and the eight ICD-001 register words (word i =
 digest bytes 4i..4i+3, little-endian) as VHDL literals. With --bin, also checks
-that the key is embedded in the given BL2 binary.
+that the key is embedded in the given BL2 binary, and with --expect-offset that
+it sits at exactly that payload offset (BL2's layout puts it at 0).
 """
 import hashlib
 import struct
@@ -16,9 +17,14 @@ from pathlib import Path
 def main():
     args = sys.argv[1:]
     binpath = None
+    expect_offset = None
     if "--bin" in args:
         i = args.index("--bin")
         binpath = args[i + 1]
+        del args[i:i + 2]
+    if "--expect-offset" in args:
+        i = args.index("--expect-offset")
+        expect_offset = int(args[i + 1], 0)
         del args[i:i + 2]
 
     keyfile = Path(args[0] if args else "keys/dev.pub")
@@ -41,6 +47,9 @@ def main():
         pos = data.find(key)
         if pos < 0:
             print(f"[FAIL] key not found in {binpath}")
+            return 1
+        if expect_offset is not None and pos != expect_offset:
+            print(f"[FAIL] key found at payload offset 0x{pos:X}, expected 0x{expect_offset:X}")
             return 1
         print(f"[ok] key embedded in {binpath} at payload offset 0x{pos:X}")
     return 0

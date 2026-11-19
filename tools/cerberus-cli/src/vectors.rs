@@ -119,7 +119,22 @@ pub fn generate() -> Vec<Vector> {
 
     let app1 = build(IMAGE_TYPE_APP, 1, 0x4002_0100, 0x01, &pattern(64), &key);
     let app2 = build(IMAGE_TYPE_APP, 2, 0x4002_0100, 0x02, &pattern(64), &key);
-    let bl2 = build(IMAGE_TYPE_BL2, 1, 0x4000_0100, 0x03, &pattern(128), &key);
+    // BL2 layout (ADR-004): the vendor public key is the first 32 bytes of the
+    // payload, and the entry point is the first byte after it.
+    let mut bl2_payload = test_public_key().to_vec();
+    bl2_payload.extend_from_slice(&pattern(96));
+    let bl2 = build_image(
+        &ImageParams {
+            image_type: IMAGE_TYPE_BL2,
+            security_version: 1,
+            load_address: 0x4000_0100,
+            entry_point: 0x4000_0120,
+            nonce_salt: [0x03; 16],
+        },
+        &bl2_payload,
+        &key,
+    )
+    .expect("vector parameters are valid");
     let tiny = build(IMAGE_TYPE_APP, 1, 0x4002_0100, 0x04, &pattern(1), &key);
 
     vec![
@@ -129,7 +144,7 @@ pub fn generate() -> Vec<Vector> {
         mk("valid_app_secver2.img", app2, "ok", None, Some(2),
            "Valid app image, security version 2 (for rollback tests)"),
         mk("valid_bl2_secver1.img", bl2, "ok", None, Some(1),
-           "Valid BL2 image, 128-byte payload"),
+           "Valid BL2 image, 128-byte payload (32-byte vendor key + 96-byte code)"),
         mk("valid_app_min_payload.img", tiny, "ok", None, Some(1),
            "Valid app image with the minimum payload of 1 byte"),
         // ---- framing -----------------------------------------------------
