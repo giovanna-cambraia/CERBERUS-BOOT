@@ -12,8 +12,9 @@ package BL1.Types with SPARK_Mode is
    subtype Header_Index is Natural range 0 .. Header_Size - 1;
 
    --  The image header, copied out of flash into a local buffer. Parsing a
-   --  fixed-size array keeps every index provable.
-   type Header_Buffer is array (Header_Index) of Byte;
+   --  fixed-size array keeps every index provable. The C convention lets the
+   --  buffer be passed to C as a plain pointer.
+   type Header_Buffer is array (Header_Index) of Byte with Convention => C;
 
    --  Index type is Integer (not Natural) so that empty arrays (0 .. -1) exist.
    type Byte_Array is array (Integer range <>) of Byte;
