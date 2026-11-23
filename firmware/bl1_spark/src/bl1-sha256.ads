@@ -41,4 +41,7 @@ package BL1.SHA256 with SPARK_Mode is
    procedure Hash (Data : Byte_Array; Result : out Digest)
    with Pre => Data'First = 0 and then Data'Length <= Max_Data_Length;
 
+   --  Compare two digests without stopping at the first difference.
+   function Equal (A, B : Digest) return Boolean;
+
 end BL1.SHA256;
