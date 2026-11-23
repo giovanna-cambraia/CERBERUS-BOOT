@@ -164,4 +164,13 @@ package body BL1.SHA256 with SPARK_Mode is
       Final (S, Tail, Rest, U64 (Data'Length), Result);
    end Hash;
 
+   function Equal (A, B : Digest) return Boolean is
+   Diff : Byte := 0;
+   begin
+      for I in Digest'Range loop
+         Diff := Diff or (A (I) xor B (I));
+      end loop;
+      return Diff = 0;
+   end Equal;
+
 end BL1.SHA256;

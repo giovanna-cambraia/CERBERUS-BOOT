@@ -32,6 +32,9 @@ package BL1.Header with SPARK_Mode is
    BL2_Payload_Start : constant U32 := 16#4000_0100#;
    BL2_Region_End    : constant U32 := 16#4002_0000#;
 
+   --  Size of the BL2 payload area: BL2_Region_End - BL2_Payload_Start.
+   BL2_Payload_Capacity : constant := 16#1FF00#;
+
    type Header_Fields is record
       Image_Type       : U16;
       Security_Version : U32;
@@ -64,6 +67,9 @@ package BL1.Header with SPARK_Mode is
 
    --  The payload sits exactly at the start of the BL2 payload area, fits in
    --  the partition, and the entry point lies inside it (XIP only).
-   function Placement_Ok (Fields : Header_Fields) return Boolean;
+      function Placement_Ok (Fields : Header_Fields) return Boolean
+   with
+     Post =>
+       (if Placement_Ok'Result then Fields.Payload_Size <= BL2_Payload_Capacity);
 
 end BL1.Header;
