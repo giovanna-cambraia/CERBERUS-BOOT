@@ -280,3 +280,21 @@ test-sha256: bl1 ## SHA-256 in SPARK against hashlib and FIPS 180-4
 .PHONY: test-ed25519
 test-ed25519: bl1 ## Ed25519 in BL1 (Monocypher) against RFC 8032 and the vectors
 	@python3 $(BL1_DIR)/tests/run_ed25519.py $(BUILD)/ed25519_check
+
+
+# ---- Full boot chain (BL1 -> BL2 -> app) in Renode ---------------------------
+CHAIN_SCENARIOS := chain-ok chain-tampered-payload chain-bad-signature chain-bad-header chain-attacker-key chain-wrong-type chain-wrong-otp chain-unprovisioned
+CHAIN ?= chain-ok
+ROT   ?= python
+
+.PHONY: chain-run chain-all
+chain-run: bl2-image bl1-rv32 bridge ## full chain in Renode (CHAIN=<scenario> ROT=python|ghdl)
+	@python3 scripts/renode_chain.py --scenario $(CHAIN) --rot $(ROT) --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF) --renode $(RENODE) --bridge $(BUILD)/ghdl_renode_socket_bridge --port $(BRIDGE_PORT)
+
+chain-all: bl2-image bl1-rv32 bridge ## every chain scenario (ROT=python|ghdl)
+	@fail=0; \
+	for s in $(CHAIN_SCENARIOS); do \
+	  echo "=== $$s ($(ROT) RoT)"; \
+	  python3 scripts/renode_chain.py --scenario $$s --rot $(ROT) --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF) --renode $(RENODE) --bridge $(BUILD)/ghdl_renode_socket_bridge --port $(BRIDGE_PORT) || fail=1; \
+	done; \
+	if [ $$fail -eq 0 ]; then echo "[ok] the whole chain behaved as expected"; else echo "[FAIL] some chain scenarios failed"; exit 1; fi
