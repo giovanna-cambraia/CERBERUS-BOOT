@@ -31,6 +31,7 @@ done
 
 echo "[bl1-rv32] compiling C (start-up, runtime, Monocypher, glue)"
 "$CC" "${ARCH[@]}" -c -o "$OUT/obj/start.o" "$FW/rt/start.S"
+"$CC" "${ARCH[@]}" -c -o "$OUT/obj/jump.o" "$FW/rt/jump.S"
 "$CC" "${C_FLAGS[@]}" -o "$OUT/obj/rt.o" "$FW/rt/rt.c"
 for f in monocypher monocypher-ed25519; do
   "$CC" "${C3P_FLAGS[@]}" -o "$OUT/obj/$f.o" "$THIRD/$f.c"
@@ -52,7 +53,7 @@ echo "[bl1-rv32] linking"
 "$CC" "${ARCH[@]}" -nostdlib -static -Wl,--gc-sections \
       -Wl,-T,"$FW/rt/bl1.ld" -Wl,-Map,"$OUT/bl1.map" \
       -o "$OUT/bl1.elf" \
-      "$OUT/obj/start.o" "$OUT"/obj/bl1*.o \
+      "$OUT/obj/start.o" "$OUT/obj/jump.o" "$OUT"/obj/bl1*.o \
       "$OUT/obj/crypto_glue.o" "$OUT/obj/monocypher.o" "$OUT/obj/monocypher-ed25519.o" \
       "$OUT/obj/rt.o" "${LIBS[@]}"
 "$OBJCOPY" -O binary "$OUT/bl1.elf" "$OUT/bl1.bin"
