@@ -17,12 +17,15 @@ is
    Result : BL1.Boot.Report;
 begin
    BL1.Boot.Check_BL2 (Result);
+   BL1.Boot.Finish_BL2 (Result);
 
    BL1.Platform.Write_Report
      (Status      => BL1.Types.U32 (BL1.Header.Parse_Status'Pos (Result.Status)),
       Failure     => BL1.Types.U32 (BL1.Boot.Failure_Code'Pos (Result.Failure)),
       Decision    => BL1.Types.U32 (BL1.Policy.Decision'Pos (Result.Decision)),
-      Entry_Point => Result.Entry_Point);
+      Entry_Point => Result.Entry_Point,
+      Version     => Result.Version,
+      Counter     => Result.Counter);
 
    if Result.Decision = BL1.Policy.Jump_To_BL2 then
       BL1.Platform.Jump_To (Result.Entry_Point);

@@ -3,6 +3,7 @@ with BL1.SHA256;
 
 package body BL1.Boot with SPARK_Mode is
    use type BL1.Header.Parse_Status;
+   use type BL1.Types.U32;
 
    --  Read the 32-byte vendor key from the start of the BL2 payload and check
    --  that its SHA-256 equals the hash in the OTP fuses.
@@ -63,6 +64,8 @@ package body BL1.Boot with SPARK_Mode is
       Checks        : BL1.Policy.Check_Results := (others => False);
       Locked        : Boolean;
       Otp           : BL1.SHA256.Digest;
+      Counter       : BL1.Types.U32 := 0;
+      Version       : BL1.Types.U32 := 0;
       Key           : BL1.Ed25519.Public_Key := (others => 0);
       Key_Ok        : Boolean := False;
       Digest_Ok     : Boolean := False;
@@ -77,34 +80,39 @@ package body BL1.Boot with SPARK_Mode is
 
       if Status = BL1.Header.Ok then
          Checks.Header_Ok := True;
+         Version := Fields.Security_Version;
 
          if BL1.Header.Placement_Ok (Fields) then
             Checks.Placement_Ok := True;
 
-            BL1.Platform.Read_RoT (Locked, Otp);
+            BL1.Platform.Read_RoT (Locked, Otp, Counter);
             if Locked then
                Checks.Provisioned := True;
 
-               Load_And_Check_Key (Otp, Key, Key_Ok);
-               if Key_Ok then
-                  Checks.Key_Hash_Ok := True;
+               if Version >= Counter then
+                  Checks.Rollback_Ok := True;
 
-                  for I in Header_Digest'Range loop
-                     Header_Digest (I) := Buf (BL1.Header.Off_Digest + I);
-                  end loop;
-                  Payload_Matches
-                    (Natural (Fields.Payload_Size), Header_Digest, Digest_Ok);
-                  if Digest_Ok then
-                     Checks.Digest_Ok := True;
+                  Load_And_Check_Key (Otp, Key, Key_Ok);
+                  if Key_Ok then
+                     Checks.Key_Hash_Ok := True;
 
-                     for I in Sig'Range loop
-                        Sig (I) := Buf (BL1.Header.Off_Signature + I);
+                     for I in Header_Digest'Range loop
+                        Header_Digest (I) := Buf (BL1.Header.Off_Digest + I);
                      end loop;
-                     if BL1.Ed25519.Valid
-                          (Sig, Key, Buf, BL1.Header.Signed_Length)
-                     then
-                        Checks.Signature_Ok := True;
-                        Entry_Point := Fields.Entry_Point;
+                     Payload_Matches
+                       (Natural (Fields.Payload_Size), Header_Digest, Digest_Ok);
+                     if Digest_Ok then
+                        Checks.Digest_Ok := True;
+
+                        for I in Sig'Range loop
+                           Sig (I) := Buf (BL1.Header.Off_Signature + I);
+                        end loop;
+                        if BL1.Ed25519.Valid
+                             (Sig, Key, Buf, BL1.Header.Signed_Length)
+                        then
+                           Checks.Signature_Ok := True;
+                           Entry_Point := Fields.Entry_Point;
+                        end if;
                      end if;
                   end if;
                end if;
@@ -118,6 +126,7 @@ package body BL1.Boot with SPARK_Mode is
         (if not Checks.Header_Ok then Header_Invalid
          elsif not Checks.Placement_Ok then Placement_Invalid
          elsif not Checks.Provisioned then Not_Provisioned
+         elsif not Checks.Rollback_Ok then Rollback_Rejected
          elsif not Checks.Key_Hash_Ok then Key_Hash_Mismatch
          elsif not Checks.Digest_Ok then Digest_Mismatch
          elsif not Checks.Signature_Ok then Signature_Invalid
@@ -128,7 +137,24 @@ package body BL1.Boot with SPARK_Mode is
          Failure     => Failure,
          Decision    => Decision,
          Entry_Point =>
-           (if Decision = BL1.Policy.Jump_To_BL2 then Entry_Point else 0));
+           (if Decision = BL1.Policy.Jump_To_BL2 then Entry_Point else 0),
+         Version     => Version,
+         Counter     => Counter);
    end Check_BL2;
+
+   procedure Finish_BL2 (R : in out Report) is
+      Counter : BL1.Types.U32;
+   begin
+      if R.Decision = BL1.Policy.Jump_To_BL2 and then R.Version > R.Counter then
+         BL1.Platform.Burn_BL2_Counter (R.Version);
+         BL1.Platform.Read_BL2_Counter (Counter);
+         R.Counter := Counter;
+         if Counter /= R.Version then
+            R.Decision := BL1.Policy.Safe_Halt;
+            R.Failure := Counter_Burn_Failed;
+            R.Entry_Point := 0;
+         end if;
+      end if;
+   end Finish_BL2;
 
 end BL1.Boot;
