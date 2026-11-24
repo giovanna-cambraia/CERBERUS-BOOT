@@ -35,6 +35,5 @@ the boot ROM and verifies BL2 before jumping to it.
 | chain-wrong-type | REQ-001 | | an image of the wrong type is rejected |
 | chain-wrong-otp | REQ-001 | Spoofing | OTP hash differs from BL2's key: halt |
 | chain-unprovisioned | lifecycle | | fuses not committed: halt |
-
-Not covered: anti-rollback for BL2 itself. BL1 does not compare BL2's security
-version with the hardware counter, so an older, validly signed BL2 would boot.
+| chain-rollback | REQ-002 | Elevation of privilege | BL2 version 1 with BL2 counter 2: BL1 refuses, BL2 never runs |
+| chain-bl2-upgrade | REQ-002 | | BL2 version 2 with counter 1: boots, and BL1 raises the BL2 counter to |

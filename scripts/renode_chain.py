@@ -6,7 +6,7 @@
 
 BL1 goes into the boot ROM, a (possibly damaged) BL2 image into the BL2
 partition, and a good test app into slot A; the hart starts in BL1. Afterwards
-BL1's report, BL2's report, the app's marker and the RoT counter are read and
+BL1's report, BL2's report, the app's marker and both RoT counters are read and
 compared with what each scenario should produce.
 """
 import argparse
@@ -28,14 +28,14 @@ BL2_BASE = 0x4000_0000
 BL1_REPORT = 0x2003_B000
 BL1_MAGIC = 0xB101_0002
 JUMP, HALT = 0, 1
-NONE_SLOT = 0xFF
 
 # Boot.Failure_Code'Pos
-F_NONE, F_HEADER, F_PLACEMENT, F_UNPROVISIONED, F_KEY, F_DIGEST, F_SIGNATURE = range(7)
+(F_NONE, F_HEADER, F_PLACEMENT, F_UNPROVISIONED, F_ROLLBACK,
+ F_KEY, F_DIGEST, F_SIGNATURE, F_BURN) = range(9)
 # Header.Parse_Status'Pos (only the ones used here)
 S_OK, S_CRC, S_WRONG_TYPE = 0, 3, 6
 
-DEFAULTS = dict(locked=1, flip_hash=False)
+DEFAULTS = dict(locked=1, flip_hash=False, bl2_counter0=0)
 SCENARIOS = {
     "chain-ok":               dict(bl2="good"),
     "chain-tampered-payload": dict(bl2="tampered"),   # one payload byte flipped
@@ -45,14 +45,16 @@ SCENARIOS = {
     "chain-wrong-type":       dict(bl2="apptype"),    # BL2 payload signed as an app image
     "chain-wrong-otp":        dict(bl2="good", flip_hash=True),
     "chain-unprovisioned":    dict(bl2="good", locked=0),
+    "chain-rollback":         dict(bl2="good", bl2_counter0=2),    # version 1 < counter 2
+    "chain-bl2-upgrade":      dict(bl2="secver2", bl2_counter0=1), # version 2 > counter 1
 }
 
 
-def sign_bl2(cli, key, payload, out, image_type, entry):
+def sign_bl2(cli, key, payload, out, image_type, entry, secver=1):
     subprocess.run(
         [str((ROOT / cli).resolve()), "sign",
          "--key", str(key), "--payload", str(payload), "--out", str(out),
-         "--type", image_type, "--secver", "1",
+         "--type", image_type, "--secver", str(secver),
          "--load", "0x40000100", "--entry", hex(entry)],
         cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
 
@@ -70,6 +72,8 @@ def make_bl2_variant(kind, cli, bl2_bin, bl2_img, entry, out):
     elif kind == "badcrc":
         data[0x18] ^= 0x01                # a salt byte; the header CRC is not updated
         out.write_bytes(data)
+    elif kind == "secver2":
+        sign_bl2(cli, ROOT / "keys" / "dev.key", bl2_bin, out, "bl2", entry, secver=2)
     elif kind == "attacker":
         # A well-formed, internally consistent BL2 image, but signed by a key the
         # OTP fuses do not know, with that key embedded at the start of the payload.
@@ -90,13 +94,15 @@ def make_bl2_variant(kind, cli, bl2_bin, bl2_img, entry, out):
 def expectations(name, bl2_entry, bl2_report):
     """List of (label, address, expected value), read after the run."""
 
-    def bl1(status, failure, decision, entry):
+    def bl1(status, failure, decision, entry, version, counter):
         return [
             ("BL1 report magic", BL1_REPORT + 0, BL1_MAGIC),
             ("BL1 parse status", BL1_REPORT + 4, status),
             ("BL1 failure code", BL1_REPORT + 8, failure),
             ("BL1 decision", BL1_REPORT + 12, decision),
             ("BL1 entry point", BL1_REPORT + 16, entry),
+            ("BL1 BL2 version", BL1_REPORT + 20, version),
+            ("BL1 BL2 counter", BL1_REPORT + 24, counter),
         ]
 
     def bl2(magic, code, slot, entry):
@@ -107,28 +113,37 @@ def expectations(name, bl2_entry, bl2_report):
             ("BL2 report entry", bl2_report + 12, entry),
         ]
 
+    def counters(app, bl2_counter):
+        return [
+            ("RoT app counter", rp.ROT_BASE + 0x24, app),
+            ("RoT BL2 counter", rp.ROT_BASE + 0x2C, bl2_counter),
+        ]
+
     marker = ("app marker", rp.MARKER, rp.APP_MARKER)
-    counter = lambda v: ("RoT counter", rp.ROT_BASE + 0x24, v)  # noqa: E731
 
-    if name == "chain-ok":
-        return (bl1(S_OK, F_NONE, JUMP, bl2_entry)
+    def booted(version, counter_after):
+        # BL1 verifies BL2 and jumps; BL2 boots the app and raises the app counter.
+        return (bl1(S_OK, F_NONE, JUMP, bl2_entry, version, counter_after)
                 + bl2(rp.REPORT_MAGIC, 0, 0, rp.A_ENTRY)
-                + [marker, counter(1)])
+                + [marker] + counters(1, counter_after))
 
-    def halted(status, failure):
-        # BL1 stops: BL2 and the app never run, nothing burns the counter.
-        return (bl1(status, failure, HALT, 0)
+    def halted(status, failure, version, counter_read, bl2_counter):
+        # BL1 stops: BL2 and the app never run, no counter moves.
+        return (bl1(status, failure, HALT, 0, version, counter_read)
                 + bl2(0, 0, 0, 0)
-                + [("app marker", rp.MARKER, 0), counter(0)])
+                + [("app marker", rp.MARKER, 0)] + counters(0, bl2_counter))
 
     table = {
-        "chain-tampered-payload": halted(S_OK, F_DIGEST),
-        "chain-bad-signature":    halted(S_OK, F_SIGNATURE),
-        "chain-bad-header":       halted(S_CRC, F_HEADER),
-        "chain-attacker-key":     halted(S_OK, F_KEY),
-        "chain-wrong-type":       halted(S_WRONG_TYPE, F_HEADER),
-        "chain-wrong-otp":        halted(S_OK, F_KEY),
-        "chain-unprovisioned":    halted(S_OK, F_UNPROVISIONED),
+        "chain-ok":               booted(1, 1),
+        "chain-bl2-upgrade":      booted(2, 2),
+        "chain-tampered-payload": halted(S_OK, F_DIGEST, 1, 0, 0),
+        "chain-bad-signature":    halted(S_OK, F_SIGNATURE, 1, 0, 0),
+        "chain-bad-header":       halted(S_CRC, F_HEADER, 0, 0, 0),
+        "chain-attacker-key":     halted(S_OK, F_KEY, 1, 0, 0),
+        "chain-wrong-type":       halted(S_WRONG_TYPE, F_HEADER, 0, 0, 0),
+        "chain-wrong-otp":        halted(S_OK, F_KEY, 1, 0, 0),
+        "chain-unprovisioned":    halted(S_OK, F_UNPROVISIONED, 1, 0, 0),
+        "chain-rollback":         halted(S_OK, F_ROLLBACK, 1, 2, 2),
     }
     return table[name]
 
@@ -181,7 +196,8 @@ def main():
             rp.ROT_TEMPLATE
             .replace("@WORDS@", ", ".join(f"0x{w:08X}" for w in words))
             .replace("@LOCKED@", str(sc["locked"]))
-            .replace("@COUNTER@", "0"))
+            .replace("@COUNTER@", "0")
+            .replace("@BL2COUNTER@", str(sc["bl2_counter0"])))
 
     template = (ROOT / "sim/renode/platform/cerberus.repl.in").read_text()
     repl = OUT / "cerberus.repl"
@@ -216,6 +232,8 @@ def main():
             cmd.append("--flip-hash")
         if not sc["locked"]:
             cmd.append("--no-lock")
+        if sc["bl2_counter0"]:
+            cmd += ["--bl2-counter0", str(sc["bl2_counter0"])]
         bridge = subprocess.Popen(cmd, cwd=ROOT, stdout=open(OUT / "bridge.log", "w"),
                                   stderr=subprocess.STDOUT)
         deadline = time.time() + 90

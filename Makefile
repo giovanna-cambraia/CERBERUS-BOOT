@@ -283,7 +283,7 @@ test-ed25519: bl1 ## Ed25519 in BL1 (Monocypher) against RFC 8032 and the vector
 
 
 # ---- Full boot chain (BL1 -> BL2 -> app) in Renode ---------------------------
-CHAIN_SCENARIOS := chain-ok chain-tampered-payload chain-bad-signature chain-bad-header chain-attacker-key chain-wrong-type chain-wrong-otp chain-unprovisioned
+CHAIN_SCENARIOS := chain-ok chain-tampered-payload chain-bad-signature chain-bad-header chain-attacker-key chain-wrong-type chain-wrong-otp chain-unprovisioned chain-rollback chain-bl2-upgrade
 CHAIN ?= chain-ok
 ROT   ?= python
 
