@@ -122,6 +122,13 @@ begin
         bus_write(ADDR_COUNTER, x"FFFFFFFF");
         bus_read(ADDR_STATUS, rd);  expect("T12 locked + error", rd, x"00000003");
 
+        -- The BL2 counter is independent of the application counter
+        bus_write(ADDR_BL2_COUNTER, x"00000003");
+        bus_read(ADDR_BL2_COUNTER, rd); expect("T13 BL2 counter = 3", rd, x"00000003");
+        bus_read(ADDR_COUNTER, rd);     expect("T13 app counter unchanged", rd, x"FFFFFFFF");
+        bus_write(ADDR_BL2_COUNTER, x"00000002");
+        bus_read(ADDR_BL2_COUNTER, rd); expect("T14 BL2 decrement rejected", rd, x"00000003");
+
         report "ALL TESTS PASSED";
         finish;
         wait;

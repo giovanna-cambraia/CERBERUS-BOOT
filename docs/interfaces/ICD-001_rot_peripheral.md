@@ -16,6 +16,7 @@ relative to the base. Registers are 32-bit and word-aligned.
 | 0x004..0x020  | ROT_PUBKEY_HASH_0..7 | R      | SHA-256 digest of the vendor public key, word 0 at 0x004 through word 7 at 0x020. |
 | 0x024         | ROT_MONOTONIC_CTR    | R/W    | Anti-rollback counter. A write burns it forward only (see 3.2). |
 | 0x028         | ROT_LIFECYCLE_CMD    | W      | Write `0xA5A50001` to commit (lock) the fuses. Reads as 0. |
+| 0x02C         | ROT_BL2_CTR          | R/W    | BL2 anti-rollback counter, same write rules as ROT_MONOTONIC_CTR (3.2). Owned by BL1. |
 | other         | (unmapped)           |        | Reads return 0. Writes set ROT_STATUS.ERROR. |
 
 ## 3. Behavior
@@ -57,6 +58,20 @@ SHA-256 digest as a little-endian 32-bit value: digest byte 4i is the least
 significant byte of the word. Software rebuilds the digest by storing each
 word little-endian, in register order. Provisioning (the VHDL generic
 `PUBKEY_HASH`) must use the same mapping.
+
+### 3.7 Counter ownership
+
+There is one counter per boot stage, so that the versions of different images
+never constrain each other.
+
+| Counter | Register | Compared with | Raised by |
+|---|---|---|---|
+| Application | ROT_MONOTONIC_CTR (0x024) | application image version | BL2, after a confirmed boot |
+| BL2 | ROT_BL2_CTR (0x02C) | BL2 image version | BL1, after BL2 passed every check |
+
+BL1 raises the BL2 counter only after the signature has verified, so a forged
+image cannot ratchet it. The consequence is that a BL2 that verifies but turns
+out to be faulty cannot be rolled back, because BL2 has no A/B scheme.
 
 ## 4. Bus protocol
 
