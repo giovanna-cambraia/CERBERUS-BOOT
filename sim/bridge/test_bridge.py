@@ -104,6 +104,12 @@ def main():
     s.write(0x004, 0xDEADBEEF)
     check("hash register read-only", s.read(0x004), words[0])
     check("unmapped read is 0", s.read(0x100), 0)
+    check("BL2 counter starts at 0", s.read(0x02C), 0)
+    s.write(0x02C, 4)
+    check("BL2 counter burned to 4", s.read(0x02C), 4)
+    s.write(0x02C, 2)
+    check("BL2 counter decrement rejected", s.read(0x02C), 4)
+    check("application counter independent", s.read(0x024), 5)
     s.close()
 
     print("uncommitted fuses (--no-lock):")
@@ -123,6 +129,12 @@ def main():
     print("initial counter (--counter0 2):")
     s = Session("--counter0", "2")
     check("counter preset", s.read(0x024), 2)
+    check("status clean", s.read(0x000), 0x1)
+    s.close()
+
+    print("initial BL2 counter (--bl2-counter0 3):")
+    s = Session("--bl2-counter0", "3")
+    check("BL2 counter preset", s.read(0x02C), 3)
     check("status clean", s.read(0x000), 0x1)
     s.close()
 

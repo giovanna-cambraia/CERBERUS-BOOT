@@ -34,6 +34,7 @@ REQUEST = re.compile(r"^(P|R [0-9A-Fa-f]{8}|W [0-9A-Fa-f]{8} [0-9A-Fa-f]{8})$")
 
 ROT_COUNTER = 0x024
 ROT_LIFECYCLE = 0x028
+ROT_BL2_COUNTER = 0x02C
 LIFECYCLE_COMMIT = 0xA5A50001
 
 
@@ -124,6 +125,10 @@ def provision(sim, args):
         reply = sim.transact(f"W {ROT_COUNTER:08X} {args.counter0:08X}")
         if reply != "OK":
             sys.exit(f"counter preset failed: {reply}")
+    if args.bl2_counter0:
+        reply = sim.transact(f"W {ROT_BL2_COUNTER:08X} {args.bl2_counter0:08X}")
+        if reply != "OK":
+            sys.exit(f"BL2 counter preset failed: {reply}")
     reply = sim.transact("R 00000000")
     status = int(reply.split()[1], 16) if reply.startswith("OK ") else -1
     want = 0 if args.no_lock else 1
@@ -185,6 +190,7 @@ def main():
     ap.add_argument("--key", default=str(ROOT / "keys" / "dev.pub"))
     ap.add_argument("--flip-hash", action="store_true", help="corrupt the OTP hash (wrong-key test)")
     ap.add_argument("--counter0", type=int, default=0, help="initial monotonic counter")
+    ap.add_argument("--bl2-counter0", type=int, default=0, help="initial BL2 counter")
     ap.add_argument("--no-lock", action="store_true", help="leave the fuses uncommitted")
     ap.add_argument("--workdir", default=str(ROOT / "build" / "ghdl_bridge"))
     ap.add_argument("--ghdl", default=os.environ.get("GHDL", "ghdl"))
