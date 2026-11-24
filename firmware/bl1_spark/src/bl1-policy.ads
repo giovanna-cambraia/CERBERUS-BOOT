@@ -5,6 +5,7 @@ package BL1.Policy with SPARK_Mode is
       Header_Ok    : Boolean;  --  steps 1-6 of the verifier order
       Placement_Ok : Boolean;  --  load address, size and entry point
       Provisioned  : Boolean;  --  the RoT fuses are committed
+      Rollback_Ok  : Boolean;  --  BL2 version is not below the BL2 counter
       Key_Hash_Ok  : Boolean;  --  SHA-256 of BL2's key equals the OTP hash
       Digest_Ok    : Boolean;  --  SHA-256 of the payload equals the header digest
       Signature_Ok : Boolean;  --  Ed25519 over the signed header bytes
@@ -20,6 +21,7 @@ package BL1.Policy with SPARK_Mode is
          (R.Header_Ok
           and then R.Placement_Ok
           and then R.Provisioned
+          and then R.Rollback_Ok
           and then R.Key_Hash_Ok
           and then R.Digest_Ok
           and then R.Signature_Ok);

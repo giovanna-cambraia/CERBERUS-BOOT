@@ -5,6 +5,7 @@ package body BL1.Policy with SPARK_Mode is
       if R.Header_Ok
         and then R.Placement_Ok
         and then R.Provisioned
+        and then R.Rollback_Ok
         and then R.Key_Hash_Ok
         and then R.Digest_Ok
         and then R.Signature_Ok

@@ -6,7 +6,7 @@ package BL1.Platform
   with SPARK_Mode,
        Abstract_State =>
          ((Flash       with External => Async_Writers),
-          (RoT         with External => Async_Writers),
+          (RoT         with External => (Async_Readers, Async_Writers)),
           (Report_Area with External => Async_Readers))
 is
 
@@ -30,21 +30,33 @@ is
        Count <= BL1.SHA256.Block_Size
        and then Offset <= BL1.Header.BL2_Payload_Capacity - Count;
 
-   --  Lifecycle bit and the SHA-256 of the vendor key from the OTP fuses
-   --  (ICD-001: word i holds digest bytes 4i .. 4i+3, little-endian).
+   --  Lifecycle bit, the SHA-256 of the vendor key from the OTP fuses
+   --  (ICD-001: word i holds digest bytes 4i .. 4i+3, little-endian), and the
+   --  BL2 anti-rollback counter.
    procedure Read_RoT
-     (Locked   : out Boolean;
-      Key_Hash : out BL1.SHA256.Digest)
+     (Locked      : out Boolean;
+      Key_Hash    : out BL1.SHA256.Digest;
+      BL2_Counter : out U32)
    with Global => (Input => RoT);
 
-   --  Publish the boot report in SRAM for a debugger or the simulator: five
-   --  words (magic, status, failure, decision, entry point). The magic word
-   --  is written last, so a reader sees a complete report or none.
+   procedure Read_BL2_Counter (Value : out U32)
+   with Global => (Input => RoT);
+
+   --  Request a forward burn of the BL2 counter. The caller reads it back.
+   procedure Burn_BL2_Counter (Value : U32)
+   with Global => (In_Out => RoT);
+
+   --  Publish the boot report in SRAM for a debugger or the simulator: seven
+   --  words (magic, status, failure, decision, entry point, BL2 version,
+   --  BL2 counter). The magic word is written last, so a reader sees a
+   --  complete report or none.
    procedure Write_Report
      (Status      : U32;
       Failure     : U32;
       Decision    : U32;
-      Entry_Point : U32)
+      Entry_Point : U32;
+      Version     : U32;
+      Counter     : U32)
    with Global => (Output => Report_Area);
 
    --  Transfer control to the verified image. Never returns.
