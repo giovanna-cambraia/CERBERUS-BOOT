@@ -16,3 +16,7 @@ pub mod memmap;
 pub mod nv;
 pub mod platform;
 pub mod verify;
+
+#[cfg(kani)]
+#[path = "../kani/proofs.rs"]
+mod proofs;

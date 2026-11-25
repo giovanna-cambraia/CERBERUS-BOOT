@@ -298,3 +298,15 @@ chain-all: bl2-image bl1-rv32 bridge ## every chain scenario (ROT=python|ghdl)
 	  python3 scripts/renode_chain.py --scenario $$s --rot $(ROT) --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF) --renode $(RENODE) --bridge $(BUILD)/ghdl_renode_socket_bridge --port $(BRIDGE_PORT) || fail=1; \
 	done; \
 	if [ $$fail -eq 0 ]; then echo "[ok] the whole chain behaved as expected"; else echo "[FAIL] some chain scenarios failed"; exit 1; fi
+
+
+# ---- Documentation check and the full evidence run ---------------------------
+.PHONY: docs-check verify-quick verify
+docs-check: ## check that the documents only name make targets, files and scenarios that exist
+	@python3 scripts/check_docs.py
+
+verify-quick: spec-check vectors-check test-hdl test-cli test-bl2 test-bl1 test-sha256 test-ed25519 prove bridge-test docs-check ## every host-side check, no emulator
+
+verify: verify-quick bl1-rv32 renode-bl1 renode-all cosim-all chain-all ## everything, including all emulator scenarios
+	@$(MAKE) chain-all ROT=ghdl
+	@echo "[ok] full verification run finished"
