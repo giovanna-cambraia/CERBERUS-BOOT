@@ -117,9 +117,9 @@ test-bl2: ## VTP-001 step 3a: rust unit tests on the host
 	  cd $(BL2_DIR) && $(CARGO) test --target x86_64-unknown-linux-gnu --features crypto; \
 	else echo "[skip] test-bl2: $(BL2_DIR)/Cargo.toml not present yet"; fi
 
-kani: ## VTP-001 step 3b: kani model checking of the header parser
+kani: ## VTP-001 step 3b: bounded model checking of BL2 (all harnesses)
 	@if [ -f $(BL2_DIR)/Cargo.toml ]; then \
-	  cd $(BL2_DIR) && $(CARGO) kani --harness verify_header_parsing; \
+	  cd $(BL2_DIR) && $(CARGO) kani; \
 	else echo "[skip] kani: $(BL2_DIR)/Cargo.toml not present yet"; fi
 
 fuzz-app: dirs ## VTP-001 step 4: ASan/UBSan harness for the OTA parser
@@ -305,7 +305,7 @@ chain-all: bl2-image bl1-rv32 bridge ## every chain scenario (ROT=python|ghdl)
 docs-check: ## check that the documents only name make targets, files and scenarios that exist
 	@python3 scripts/check_docs.py
 
-verify-quick: spec-check vectors-check test-hdl test-cli test-bl2 test-bl1 test-sha256 test-ed25519 prove bridge-test docs-check ## every host-side check, no emulator
+verify-quick: spec-check vectors-check test-hdl test-cli test-bl2 kani test-bl1 test-sha256 test-ed25519 prove bridge-test docs-check ## every host-side check, no emulator
 
 verify: verify-quick bl1-rv32 renode-bl1 renode-all cosim-all chain-all ## everything, including all emulator scenarios
 	@$(MAKE) chain-all ROT=ghdl

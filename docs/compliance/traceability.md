@@ -19,7 +19,7 @@ here exists.
 | REQ-001 | Integrity check of the second-stage boot code before it runs | NIST SP 800-193 4.2.1 | Covered |
 | REQ-002 | Prevention of firmware downgrade | IEC 62443-4-2 CR 7.6; ISO 21434 10.4.1 | Covered |
 | REQ-003 | Dual-slot update that cannot brick the device | NIST SP 800-193 4.4.1; ISO 26262-6 7.4.3 | Partial |
-| REQ-004 | Freedom from memory corruption in the parsers | DO-178C Table A-5; ISO 26262-6 Table 1 | Partial |
+| REQ-004 | Freedom from memory corruption in the parsers | DO-178C Table A-5; ISO 26262-6 Table 1 | Covered |
 | REQ-005 | No unbounded buffer overflows in the update-path parser | MISRA C:2012 Dir 4.11, Rules 17.7, 21.8; CERT C ARR30-C | Open |
 
 ## REQ-001: integrity of BL2
@@ -81,14 +81,23 @@ here exists.
 ## REQ-004: parsers free of memory-safety errors
 
 - **Design:** BL1's header parser, CRC, SHA-256 and boot logic are SPARK; BL2's
-  parser is safe Rust with `#![forbid(unsafe_code)]` (`firmware/bl2_rust/src/lib.rs`).
+  parser, verification pipeline, slot state machine and NV codec are safe Rust
+  (`#![forbid(unsafe_code)]` in `firmware/bl2_rust/src/lib.rs`).
 - **Evidence:**
   - `make prove`: absence of index, range and overflow errors in the SPARK units.
-  - The vector suites run on BL1 (`make test-bl1`, `make renode-bl1`) and BL2
-    (`make test-bl2`) with the same files.
-- **Gaps:** there is no model-checking harness for BL2's parser (`make kani` is a
-  placeholder). The Rust claim currently rests on the language's guarantees, the
-  forbidden `unsafe`, and tests.
+  - `make kani`: bounded model checking of the Rust side, in
+    `firmware/bl2_rust/kani/proofs.rs`, for every input within the bounds of
+    ADR-006: `verify_header_parsing` (no panic, and an accepted header satisfies
+    every rule), `verify_check_order`, `verify_image_accepts_only_verified_images`
+    (an image is accepted only after a successful signature check, whatever the
+    crypto returns), `verify_ct_eq_is_equality`, `verify_nv_decode_is_canonical`,
+    `verify_nv_round_trip`, `verify_select_boot_only_boots_verified_slots` (for any
+    NV contents, only a slot that verified is booted).
+  - The vector suites run on BL1 and BL2 with the same files (`make test-bl1`,
+    `make renode-bl1`, `make test-bl2`).
+- **Gaps:** Kani's results hold within its bounds (ADR-006): images up to 264
+  bytes, 64-byte NV sectors, crypto modelled as arbitrary. The hardware-access
+  code (BL2's `entry` crate, which needs `unsafe`) is outside both tools.
 
 ## REQ-005: the C update parser
 
