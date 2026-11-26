@@ -2,6 +2,7 @@ use cerberus_cli::header::{self, Header};
 use cerberus_cli::hexutil::{from_hex, to_hex};
 use cerberus_cli::image::{build_image, sha256, verify_image, ImageParams};
 use cerberus_cli::vectors;
+use cerberus_cli::ota;
 use ed25519_dalek::SigningKey;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -17,6 +18,7 @@ fn usage() -> ExitCode {
     eprintln!("  cerberus-cli example <out.bin>        dummy unsigned header");
     ExitCode::from(2)
     eprintln!("  cerberus-cli vectors <outdir>         write deterministic test vectors + manifest");
+    eprintln!("  cerberus-cli ota-frames <image> <out> write the OTA frame stream for an image");
 }
 
 fn flag<'a>(args: &[&'a str], name: &str) -> Option<&'a str> {
