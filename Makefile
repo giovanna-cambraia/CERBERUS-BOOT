@@ -77,15 +77,8 @@ bl2: dirs ## build Stage-2 bootloader (Rust no_std, RV32IMAC)
 	  $(CARGO) build --release --target $(RV_TARGET) --features crypto --manifest-path $(BL2_DIR)/Cargo.toml; \
 	else echo "[skip] bl2: $(BL2_DIR)/Cargo.toml not present yet"; fi
 
-app: dirs ## build application + OTA agent (C11, cross-compiled)
-	@if [ -z "$(APP_SRC)" ]; then echo "[skip] app: no .c files in $(APP_DIR)/src yet"; else \
-	  echo "[app] cross-compiling"; \
-	  $(RV_CC) -std=c11 -march=rv32imac -mabi=ilp32 -Wall -Wextra -Werror \
-	    -ffreestanding -I$(APP_DIR)/include -c $(APP_SRC) \
-	    --output-dir=$(BUILD) 2>/dev/null || \
-	  (cd $(BUILD) && $(RV_CC) -std=c11 -march=rv32imac -mabi=ilp32 -Wall -Wextra -Werror \
-	    -ffreestanding -I../$(APP_DIR)/include -c $(addprefix ../,$(APP_SRC))); \
-	fi
+app: dirs ## cross-compile the OTA agent for RV32IMAC (strict warnings, freestanding)
+	@bash scripts/build_app_rv32.sh
 
 cli: ## build host CLI (signing / header builder / OTA sender)
 	@if [ -f $(CLI_DIR)/Cargo.toml ]; then echo "[cli] cargo build"; \
@@ -122,11 +115,18 @@ kani: ## VTP-001 step 3b: bounded model checking of BL2 (all harnesses)
 	  cd $(BL2_DIR) && $(CARGO) kani; \
 	else echo "[skip] kani: $(BL2_DIR)/Cargo.toml not present yet"; fi
 
-fuzz-app: dirs ## VTP-001 step 4: ASan/UBSan harness for the OTA parser
+fuzz-app: dirs ## VTP-001 step 4: ASan/UBSan fuzzing of the OTA parser and agent
 	@if [ -f $(APP_DIR)/src/ota_parser.c ] && [ -f $(APP_DIR)/test/fuzz_harness.c ]; then \
-	  $(HOST_CC) -fsanitize=address,undefined -Wall -Wextra -Werror -I$(APP_DIR)/include \
-	    $(APP_DIR)/src/ota_parser.c $(APP_DIR)/test/fuzz_harness.c -o $(BUILD)/fuzzer; \
-	  for f in $(APP_DIR)/corpus/*.bin; do [ -e "$$f" ] && $(BUILD)/fuzzer < "$$f"; done || true; \
+	  mkdir -p $(APP_TEST_DIR); \
+	  for f in cerberus_nv ota_parser ota_agent; do \
+	    $(HOST_CC) $(APP_WARN) $(APP_SAN) -g -I$(APP_DIR)/include -c $(APP_DIR)/src/$$f.c -o $(APP_TEST_DIR)/$$f.o || exit 1; \
+	  done; \
+	  $(HOST_CC) -std=c11 -Wall -Wextra -Werror $(APP_SAN) -g -I$(APP_DIR)/include -I$(APP_DIR)/test \
+	    $(APP_TEST_DIR)/cerberus_nv.o $(APP_TEST_DIR)/ota_parser.o $(APP_TEST_DIR)/ota_agent.o \
+	    $(APP_DIR)/test/mock_flash.c $(APP_DIR)/test/fuzz_harness.c -o $(BUILD)/fuzzer || exit 1; \
+	  for f in $(APP_DIR)/corpus/*.bin; do \
+	    if [ -e "$$f" ]; then echo "fuzzing with $$f"; $(BUILD)/fuzzer --mutate 20000 < "$$f" || exit 1; fi; \
+	  done; \
 	else echo "[skip] fuzz-app: ota_parser.c / fuzz_harness.c not present yet"; fi
 
 # ---- Co-simulation (VTP-001 step 5) -----------------------------------------
@@ -310,3 +310,33 @@ verify-quick: spec-check vectors-check test-hdl test-cli test-bl2 kani test-bl1 
 verify: verify-quick bl1-rv32 renode-bl1 renode-all cosim-all chain-all ## everything, including all emulator scenarios
 	@$(MAKE) chain-all ROT=ghdl
 	@echo "[ok] full verification run finished"
+
+
+# ---- C side: OTA agent -----------------------------------------------------------
+# Production sources get the strict warning set; test code only the basic one.
+APP_WARN     := -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wcast-qual -Wstrict-prototypes -Werror
+APP_SAN      := -fsanitize=address,undefined -fno-sanitize-recover=undefined
+APP_TEST_DIR := $(BUILD)/app_test
+
+.PHONY: test-app lint-app corpus-app
+test-app: cli dirs ## OTA agent: unit tests, power-loss sweep, cross-check with the Rust frame encoder
+	@mkdir -p $(APP_TEST_DIR)
+	@python3 scripts/check_nv_spec.py --c > $(APP_TEST_DIR)/golden_nv.h
+	@$(CLI_BIN) ota-frames test/vectors/valid_app_secver2.img $(APP_TEST_DIR)/app.frames > /dev/null
+	@for f in cerberus_nv ota_parser ota_agent; do \
+	  $(HOST_CC) $(APP_WARN) $(APP_SAN) -g -I$(APP_DIR)/include -c $(APP_DIR)/src/$$f.c -o $(APP_TEST_DIR)/$$f.o || exit 1; \
+	done
+	@$(HOST_CC) -std=c11 -Wall -Wextra -Werror $(APP_SAN) -g -I$(APP_DIR)/include -I$(APP_DIR)/test -I$(APP_TEST_DIR) \
+	  $(APP_TEST_DIR)/cerberus_nv.o $(APP_TEST_DIR)/ota_parser.o $(APP_TEST_DIR)/ota_agent.o \
+	  $(APP_DIR)/test/mock_flash.c $(APP_DIR)/test/test_app.c -o $(BUILD)/test_app
+	@$(BUILD)/test_app $(APP_TEST_DIR)/app.frames test/vectors/valid_app_secver2.img
+
+lint-app: dirs ## static analysis of the OTA agent (cppcheck with the MISRA C:2012 addon); informational
+	@command -v cppcheck >/dev/null 2>&1 || { echo "install cppcheck: sudo apt install cppcheck"; exit 1; }
+	@cppcheck --std=c11 --enable=warning,style,performance,portability --inline-suppr \
+	  --suppress=missingIncludeSystem --addon=misra -I$(APP_DIR)/include $(APP_DIR)/src 2>&1 | tee $(BUILD)/cppcheck.log
+	@echo "findings are in $(BUILD)/cppcheck.log (not gated yet: see REQ-005 in docs/compliance/traceability.md)"
+
+corpus-app: cli ## regenerate the fuzzing seed corpus from the test vectors
+	@$(CLI_BIN) ota-frames test/vectors/valid_app_secver2.img $(APP_DIR)/corpus/sample_valid_chunk.bin
+	@$(CLI_BIN) ota-frames test/vectors/valid_bl2_secver1.img $(APP_DIR)/corpus/sample_valid_bl2.bin

@@ -16,9 +16,9 @@ fn usage() -> ExitCode {
     eprintln!("  cerberus-cli verify --pub K.pub --image I");
     eprintln!("  cerberus-cli dump <image>             print the header (structural checks only)");
     eprintln!("  cerberus-cli example <out.bin>        dummy unsigned header");
-    ExitCode::from(2)
     eprintln!("  cerberus-cli vectors <outdir>         write deterministic test vectors + manifest");
     eprintln!("  cerberus-cli ota-frames <image> <out> write the OTA frame stream for an image");
+    ExitCode::from(2)
 }
 
 fn flag<'a>(args: &[&'a str], name: &str) -> Option<&'a str> {
@@ -216,6 +216,28 @@ fn cmd_example(out: &str) -> ExitCode {
     }
 }
 
+fn cmd_ota_frames(image: &str, out: &str) -> ExitCode {
+    let data = match fs::read(image) {
+        Ok(d) => d,
+        Err(e) => return fail(format!("{image}: {e}")),
+    };
+    if data.len() <= header::HEADER_SIZE || data.len() > 0xE0000 {
+        return fail(format!("{image}: not an image ({} bytes)", data.len()));
+    }
+    let stream = ota::image_to_frames(&data);
+    match fs::write(out, &stream) {
+        Ok(()) => {
+            println!(
+                "wrote {} bytes ({} frames) to {out}",
+                stream.len(),
+                2 + data.len().div_ceil(ota::DATA_CHUNK)
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(format!("{out}: {e}")),
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -228,6 +250,7 @@ fn main() -> ExitCode {
         ("dump", [path]) => cmd_dump(path),
         ("example", [out]) => cmd_example(out),
         ("vectors", [dir]) => cmd_vectors(dir),
+        ("ota-frames", [image, out]) => cmd_ota_frames(image, out),
         _ => usage(),
     }
 }
