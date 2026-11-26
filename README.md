@@ -52,7 +52,10 @@ Details: `docs/architecture.md`.
 | BL1 boot ROM | Ada/SPARK, with C (Monocypher, start-up) | implemented, proved, tested |
 | BL2 | Rust `no_std` | implemented, tested |
 | `cerberus-cli`: keys, signing, verification, test vectors | Rust (host) | implemented |
-| OTA agent and real application | C11 | **not started** |
+| OTA agent: frame parser, slot-state writer, update logic | C11 | implemented, tested on the host; not yet in a target image |
+| Fuzzing (ASan/UBSan) of the OTA parser and agent | C | implemented |
+| MISRA C:2012 analysis of the agent | C | tool wired, findings not triaged |
+| Real application that confirms an update | C11 | **not started** |
 | Kani harnesses, fuzzing of the OTA parser | | **not started** |
 
 ## Setup
@@ -103,6 +106,9 @@ make verify          # everything, including all Renode scenarios
 | `make cosim-all` | the same, with the VHDL root of trust |
 | `make chain-all` | the whole chain from the boot ROM, with damage at every link |
 | `make docs-check` | the documents only mention commands, files and scenarios that exist |
+| `make test-app` | OTA agent: slot-state writer (golden record, power-loss sweep), frame parser, update logic, and the Rust frame encoder against the C one |
+| `make fuzz-app` | the OTA parser and agent under ASan and UBSan, on mutated frames |
+| `make lint-app` | cppcheck with the MISRA C:2012 addon on the agent (informational) |
 
 Full test plan: `docs/verification/VTP-001.md`.
 
@@ -135,8 +141,10 @@ docs/                 documents (see above)
 
 ## Known limitations
 
-- No OTA agent or real application yet: the test application is five hand-written
-  instructions, and `confirm` is only exercised from Rust tests (REQ-005 is open).
+- The OTA agent exists and is tested on the host, but it isn't built into a target
+  image yet: there is no transport (UART or socket) and no application that calls
+  `confirm`. The MISRA analysis is wired but its findings are not triaged (REQ-005
+  is partial).
 - No Kani harness: `make kani` is a placeholder (REQ-004 is partial).
 - "Verified" has a precise, limited meaning for BL1: see ADR-005. Monocypher, the
   hardware-access code and the assembly are outside the proof.

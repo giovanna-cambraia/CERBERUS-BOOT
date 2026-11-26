@@ -20,7 +20,7 @@ here exists.
 | REQ-002 | Prevention of firmware downgrade | IEC 62443-4-2 CR 7.6; ISO 21434 10.4.1 | Covered |
 | REQ-003 | Dual-slot update that cannot brick the device | NIST SP 800-193 4.4.1; ISO 26262-6 7.4.3 | Partial |
 | REQ-004 | Freedom from memory corruption in the parsers | DO-178C Table A-5; ISO 26262-6 Table 1 | Covered |
-| REQ-005 | No unbounded buffer overflows in the update-path parser | MISRA C:2012 Dir 4.11, Rules 17.7, 21.8; CERT C ARR30-C | Open |
+| REQ-005 | No unbounded buffer overflows in the update-path parser | MISRA C:2012 Dir 4.11, Rules 17.7, 21.8; CERT C ARR30-C | Partial |
 
 ## REQ-001: integrity of BL2
 
@@ -74,9 +74,9 @@ here exists.
   - `make spec-check`: the NV format document, its TOML, the Rust constants and a
     golden record agree.
 - **Gaps:** power loss is injected in unit tests only, not in the emulator. The
-  OTA agent that stages images and the application that confirms them are not
-  written, so the writing side of the update protocol is exercised only from Rust
-  tests (REQ-005 below).
+  writing side of the protocol (the OTA agent) now exists in C and is tested on the
+  host, including a power-loss sweep of its slot-state writer, but it isn't built
+  into a target image, and no application calls `confirm` yet.
 
 ## REQ-004: parsers free of memory-safety errors
 
@@ -101,9 +101,25 @@ here exists.
 
 ## REQ-005: the C update parser
 
-- **Status:** open. The OTA agent in C is not written, so there is nothing to
-  analyse, fuzz or check against MISRA yet. The corresponding targets
-  (`make fuzz-app`) are placeholders.
+- **Design:** `firmware/app_c/src/ota_parser.c` (byte-at-a-time state machine, fixed
+  buffers, no heap, no recursion), `firmware/app_c/src/ota_agent.c` and
+  `firmware/app_c/src/cerberus_nv.c`; protocol in
+  `firmware/common/spec/ota_protocol.md`.
+- **Evidence:**
+  - `make test-app`: parser behaviour (garbage, damaged frames, oversized and
+    malformed headers, every single-bit corruption of a frame), agent refusals,
+    the slot-state writer against the golden record generated from the spec, a
+    power cut at every byte of a commit, and the Rust frame encoder against the C
+    one. The production sources compile with `-Wconversion -Wsign-conversion
+    -Wshadow -Werror` and more.
+  - `make fuzz-app`: mutated frame streams through the parser and agent under
+    ASan and UBSan, with an invariant that the active slot is never written.
+  - `make app`: the same sources compile freestanding for RV32.
+  - `make spec-check`: the C constants match the NV specification.
+- **Gaps:** `make lint-app` (cppcheck's MISRA C:2012 addon) is wired but its
+  findings are not triaged, so MISRA compliance is not claimed; there is no
+  AFL++ or libFuzzer campaign, only the built-in mutator; and the agent is not yet
+  built into a target image or driven over a real transport.
 
 ## Properties beyond the five requirements
 

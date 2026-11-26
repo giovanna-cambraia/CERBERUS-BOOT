@@ -117,3 +117,11 @@ slot (0 = A, 1 = B, `0xFF` none), entry. Codes: 0 normal boot, 1 trial boot,
 | Emulator | Renode |
 
 Build scripts: `scripts/build_bl1_rv32.sh` and `scripts/make_rv32_rts.sh`.
+
+## Update path
+
+The OTA agent (`firmware/app_c/`) receives framed chunks (protocol:
+`firmware/common/spec/ota_protocol.md`), writes the image into the passive slot,
+and marks it pending in the slot-state record; BL2 verifies it on the next boot.
+The agent is untrusted: its only guarantee, checked by the tests, is that it never
+writes the active slot. Everything else is enforced by BL2's verification.
