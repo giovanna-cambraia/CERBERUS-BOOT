@@ -26,7 +26,7 @@ def make_targets():
 
 def scenario_names():
     names = set()
-    for rel in ("scripts/renode_prepare.py", "scripts/renode_chain.py"):
+    for rel in ("scripts/renode_prepare.py", "scripts/renode_chain.py", "scripts/renode_update.py"):
         text = (ROOT / rel).read_text()
         block = re.search(r"SCENARIOS\s*=\s*\{(.*?)\n\}", text, re.S)
         if block:

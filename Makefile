@@ -307,10 +307,10 @@ docs-check: ## check that the documents only name make targets, files and scenar
 
 verify-quick: spec-check vectors-check test-hdl test-cli test-bl2 kani test-bl1 test-sha256 test-ed25519 prove bridge-test docs-check ## every host-side check, no emulator
 
-verify: verify-quick bl1-rv32 renode-bl1 renode-all cosim-all chain-all ## everything, including all emulator scenarios
+verify: verify-quick bl1-rv32 renode-bl1 renode-all cosim-all chain-all update-all ## everything, including all emulator scenarios
 	@$(MAKE) chain-all ROT=ghdl
+	@$(MAKE) update-all ROT=ghdl
 	@echo "[ok] full verification run finished"
-
 
 # ---- C side: OTA agent -----------------------------------------------------------
 # Production sources get the strict warning set; test code only the basic one.
@@ -340,3 +340,23 @@ lint-app: dirs ## static analysis of the OTA agent (cppcheck with the MISRA C:20
 corpus-app: cli ## regenerate the fuzzing seed corpus from the test vectors
 	@$(CLI_BIN) ota-frames test/vectors/valid_app_secver2.img $(APP_DIR)/corpus/sample_valid_chunk.bin
 	@$(CLI_BIN) ota-frames test/vectors/valid_bl2_secver1.img $(APP_DIR)/corpus/sample_valid_bl2.bin
+
+
+# ---- Updates over the emulated link (BL1 -> BL2 -> application) ------------------
+UPDATE_SCENARIOS := update-ok update-corrupt update-bad-signature update-failed-selftest
+UPDATE ?= update-ok
+
+.PHONY: app-images update-run update-all
+app-images: ## build the target application images (v1 for slot A, v2 and a failing v2 for slot B)
+	@bash scripts/build_app_images.sh
+
+update-run: bl2-image bl1-rv32 app-images bridge ## one update scenario (UPDATE=<scenario> ROT=python|ghdl)
+	@python3 scripts/renode_update.py --scenario $(UPDATE) --rot $(ROT) --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF) --renode $(RENODE) --bridge $(BUILD)/ghdl_renode_socket_bridge --port $(BRIDGE_PORT)
+
+update-all: bl2-image bl1-rv32 app-images bridge ## every update scenario (ROT=python|ghdl)
+	@fail=0; \
+	for s in $(UPDATE_SCENARIOS); do \
+	  echo "=== $$s ($(ROT) RoT)"; \
+	  python3 scripts/renode_update.py --scenario $$s --rot $(ROT) --cli $(CLI_BIN) --llvm-bin $(LLVM_BIN) --elf $(BL2_ELF) --renode $(RENODE) --bridge $(BUILD)/ghdl_renode_socket_bridge --port $(BRIDGE_PORT) || fail=1; \
+	done; \
+	if [ $$fail -eq 0 ]; then echo "[ok] every update scenario behaved as expected"; else echo "[FAIL] some update scenarios failed"; exit 1; fi

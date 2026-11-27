@@ -18,7 +18,7 @@ here exists.
 |---|---|---|---|
 | REQ-001 | Integrity check of the second-stage boot code before it runs | NIST SP 800-193 4.2.1 | Covered |
 | REQ-002 | Prevention of firmware downgrade | IEC 62443-4-2 CR 7.6; ISO 21434 10.4.1 | Covered |
-| REQ-003 | Dual-slot update that cannot brick the device | NIST SP 800-193 4.4.1; ISO 26262-6 7.4.3 | Partial |
+| REQ-003 | Dual-slot update that cannot brick the device | NIST SP 800-193 4.4.1; ISO 26262-6 7.4.3 | Covered |
 | REQ-004 | Freedom from memory corruption in the parsers | DO-178C Table A-5; ISO 26262-6 Table 1 | Covered |
 | REQ-005 | No unbounded buffer overflows in the update-path parser | MISRA C:2012 Dir 4.11, Rules 17.7, 21.8; CERT C ARR30-C | Partial |
 
@@ -73,10 +73,13 @@ here exists.
   - `make renode-all`: update, bad-update, fallback, tampered.
   - `make spec-check`: the NV format document, its TOML, the Rust constants and a
     golden record agree.
+  - `make update-all` (and with `ROT=ghdl`): update-ok, update-corrupt,
+    update-bad-signature, update-failed-selftest. A real application in C stages
+    an update, BL2 trial-boots it, the application confirms itself or fails and is
+    rolled back, through resets, on the emulated platform.
 - **Gaps:** power loss is injected in unit tests only, not in the emulator. The
-  writing side of the protocol (the OTA agent) now exists in C and is tested on the
-  host, including a power-loss sweep of its slot-state writer, but it isn't built
-  into a target image, and no application calls `confirm` yet.
+  transport is a memory-mapped mailbox standing in for a UART, with a preloaded
+  stream and no retransmission.
 
 ## REQ-004: parsers free of memory-safety errors
 
@@ -116,10 +119,11 @@ here exists.
     ASan and UBSan, with an invariant that the active slot is never written.
   - `make app`: the same sources compile freestanding for RV32.
   - `make spec-check`: the C constants match the NV specification.
+  - `make update-all`: the agent running on the emulated hart, fed the
+    Rust-framed stream, including a damaged one.
 - **Gaps:** `make lint-app` (cppcheck's MISRA C:2012 addon) is wired but its
   findings are not triaged, so MISRA compliance is not claimed; there is no
-  AFL++ or libFuzzer campaign, only the built-in mutator; and the agent is not yet
-  built into a target image or driven over a real transport.
+  AFL++ or libFuzzer campaign, only the built-in mutator.
 
 ## Properties beyond the five requirements
 

@@ -52,7 +52,8 @@ Details: `docs/architecture.md`.
 | BL1 boot ROM | Ada/SPARK, with C (Monocypher, start-up) | implemented, proved, tested |
 | BL2 | Rust `no_std` | implemented, tested |
 | `cerberus-cli`: keys, signing, verification, test vectors | Rust (host) | implemented |
-| OTA agent: frame parser, slot-state writer, update logic | C11 | implemented, tested on the host; not yet in a target image |
+| OTA agent: frame parser, slot-state writer, update logic | C11 | implemented, tested on the host and on the emulated target |
+| Test application that confirms an update | C11 | implemented (runs a self-test, then calls `confirm`) |
 | Fuzzing (ASan/UBSan) of the OTA parser and agent | C | implemented |
 | MISRA C:2012 analysis of the agent | C | tool wired, findings not triaged |
 | Real application that confirms an update | C11 | **not started** |
@@ -141,10 +142,10 @@ docs/                 documents (see above)
 
 ## Known limitations
 
-- The OTA agent exists and is tested on the host, but it isn't built into a target
-  image yet: there is no transport (UART or socket) and no application that calls
-  `confirm`. The MISRA analysis is wired but its findings are not triaged (REQ-005
-  is partial).
+- The update link is a memory-mapped mailbox standing in for a UART, with a
+  preloaded stream and no retransmission, and the application is a small test
+  program. The MISRA analysis of the C code is wired but its findings are not
+  triaged (REQ-005 is partial).
 - No Kani harness: `make kani` is a placeholder (REQ-004 is partial).
 - "Verified" has a precise, limited meaning for BL1: see ADR-005. Monocypher, the
   hardware-access code and the assembly are outside the proof.
