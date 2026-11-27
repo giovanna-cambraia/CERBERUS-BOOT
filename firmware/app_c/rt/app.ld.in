@@ -1,0 +1,59 @@
+/* Application image linked to run in place from one slot. @ROM_ORIGIN@ is the
+   start of the slot's payload (slot base + 0x100). The RAM starts at 0x2001_0000,
+   above BL2's data, so this image's start-up code cannot overwrite BL2's boot
+   report. */
+OUTPUT_ARCH(riscv)
+ENTRY(_start)
+
+MEMORY
+{
+    ROM (rx)  : ORIGIN = @ROM_ORIGIN@, LENGTH = 0xDFF00
+    RAM (rwx) : ORIGIN = 0x20010000, LENGTH = 0x26000
+}
+
+SECTIONS
+{
+    .text : ALIGN(4)
+    {
+        KEEP(*(.text.init))
+        *(.text .text.*)
+    } > ROM
+
+    .rodata : ALIGN(4)
+    {
+        *(.rodata .rodata.*)
+        *(.srodata .srodata.*)
+        . = ALIGN(4);
+    } > ROM
+
+    .data : ALIGN(4)
+    {
+        _sdata = .;
+        *(.data .data.*)
+        *(.sdata .sdata.*)
+        . = ALIGN(4);
+        _edata = .;
+    } > RAM AT > ROM
+    _sidata = LOADADDR(.data);
+
+    .bss (NOLOAD) : ALIGN(4)
+    {
+        _sbss = .;
+        *(.bss .bss.*)
+        *(.sbss .sbss.*)
+        *(COMMON)
+        . = ALIGN(4);
+        _ebss = .;
+    } > RAM
+
+    /DISCARD/ :
+    {
+        *(.eh_frame)
+        *(.eh_frame_hdr)
+        *(.comment)
+    }
+}
+
+PROVIDE(app_image_base = ORIGIN(ROM));
+PROVIDE(_stack_top = ORIGIN(RAM) + LENGTH(RAM));
+ASSERT(_ebss + 0x2000 <= _stack_top, "RAM: less than 8 KB left for the stack")
